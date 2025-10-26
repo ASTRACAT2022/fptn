@@ -48,6 +48,10 @@ def run_command(command, check=True, input_data=None):
         print(f"Ошибка: {e.stderr}")
         raise
 
+def is_service_active(service_name):
+    """Checks if a systemd service is active by its exit code."""
+    return subprocess.run(f"sudo systemctl is-active --quiet {service_name}", shell=True).returncode == 0
+
 def main():
     # --- Welcome Message ---
     print_header("Добро пожаловать в скрипт автоматической установки!")
@@ -178,7 +182,8 @@ def main():
         run_command("echo 'server=8.8.8.8' | sudo tee -a /etc/dnsmasq.conf")
         run_command("echo 'server=8.8.4.4' | sudo tee -a /etc/dnsmasq.conf")
         # Handle systemd-resolved conflict
-        if "systemd-resolved" in run_command("sudo systemctl is-active systemd-resolved", check=False):
+        if is_service_active("systemd-resolved"):
+            print("Обнаружен конфликт с systemd-resolved. Применяются исправления...")
             run_command("sudo sed -i 's/#DNSStubListener=yes/DNSStubListener=no/' /etc/systemd/resolved.conf")
             run_command("sudo systemctl restart systemd-resolved")
         run_command("sudo systemctl enable dnsmasq")
