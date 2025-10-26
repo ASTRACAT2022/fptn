@@ -15,12 +15,12 @@
 
 2.  **Сделайте скрипт исполняемым:**
     ```bash
-    chmod +x install.sh
+    chmod +x install.py
     ```
 
 3.  **Запустите скрипт:**
     ```bash
-    sudo ./install.sh
+    sudo ./install.py
     ```
     *Примечание: скрипт требует прав `sudo` для установки FPTN-сервера и его зависимостей.*
 
