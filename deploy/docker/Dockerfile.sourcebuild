@@ -43,14 +43,13 @@ RUN sed -i "s/^FPTN_VERSION = \".*\"/FPTN_VERSION = \"${FPTN_VERSION}\"/" conanf
     conan install . \
       --output-folder=build \
       --build=missing \
-      -c tools.build:jobs=2 \
       -o with_gui_client=False \
       --settings build_type=Release \
       -s compiler.cppstd=17 && \
     cmake -S . -B build \
       -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake \
       -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build --config Release --target fptn-server fptn-passwd -j2
+    cmake --build build --config Release --target fptn-server fptn-passwd -j"$(nproc)"
 
 FROM ubuntu:24.04
 
