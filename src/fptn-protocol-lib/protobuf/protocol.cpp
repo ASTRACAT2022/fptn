@@ -65,17 +65,15 @@ std::string CreateProtoPayload(fptn::common::network::IPPacketPtr packet) {
 
     if (max_padding > 0) {
       static thread_local std::mt19937 gen{std::random_device {}()};
-      static thread_local std::uniform_int_distribution<std::size_t> dist(
-          0, kMaxPaddingBytes);
+      std::uniform_int_distribution<std::size_t> dist(0, max_padding);
 
-      const std::size_t padding_size = dist(gen) % (max_padding + 1);
+      const std::size_t padding_size = dist(gen);
       if (padding_size > 0) {
         std::string padding_buffer;
         padding_buffer.resize(padding_size);
 
-        auto* gen_ptr = &gen;
-        std::ranges::generate(padding_buffer,
-            [gen_ptr]() { return static_cast<char>((*gen_ptr)() & 0xFF); });
+        fptn::common::utils::GenerateRandomBytes(
+            reinterpret_cast<std::uint8_t*>(padding_buffer.data()), padding_size);
 
         message.mutable_packet()->set_padding_data(
             padding_buffer.data(), padding_size);
