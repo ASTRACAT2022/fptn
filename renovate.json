@@ -1,0 +1,16 @@
+{
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard"
+  ],
+  "enabledManagers": [
+    "conan"
+  ],
+  "conan": {
+    "enabled": true,
+    "managerFilePatterns": [
+      "/conanfile.txt/",
+      "/conanfile.py/"
+    ]
+  }
+}

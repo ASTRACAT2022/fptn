@@ -1,0 +1,10 @@
+.cache
+.vscode
+.vsconan
+.git/
+README.md
+LICENSE
+CMakeUserPresets.json
+CI/
+tmp/
+keys/

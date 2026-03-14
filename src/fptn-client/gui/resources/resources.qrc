@@ -1,0 +1,11 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>icons/app.ico</file>
+        <file>icons/active.ico</file>
+        <file>icons/inactive.ico</file>
+
+        <file>translations/fptn_ru.qm</file>
+        <file>translations/fptn_en.qm</file>
+    </qresource>
+</RCC>

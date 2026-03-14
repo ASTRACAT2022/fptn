@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+    <meta property="og:type" content="website"/>
+    <title data-rh="true">FPTN Project</title>
+    <meta data-rh="true" name="description" content="FPTN — это бесплатный VPN для обхода цензуры. Клиент — миниатюрное приложение, интерфейс которого размещается в трее. Здесь нет регистрации!"/>
+    <link rel="alternate" hreflang="ru" href="https://batchar2.github.io/fptn/index-ru.html" />
+    <link rel="alternate" hreflang="en" href="https://batchar2.github.io/fptn/index.html" />
+    <meta name="keywords" content="FPTN VPN, FPT VPN github, FPTN, VPN, бесплатный VPN, VPN обход цензуры, OpenSource VPN, FPTN проект, обход Роскомнадзора, анонимный VPN, безопасный интернет, VPN для YouTube, точка доступа VPN, Wi-Fi VPN, конфиденциальность в интернете, Raspberry Pi VPN, OpenSource VPN, censorship bypass, FPTN Project, secure internet, anonymous internet, VPN for YouTube, VPN for Russia"/>
+    <meta data-rh="true" property="og:site_name" content="batchar2.github.io"/>
+    <meta data-rh="true" property="og:title" content="FPTN Project"/>
+    <meta data-rh="true" property="og:url" content="https://batchar2.github.io/fptn/"/>
+    <meta data-rh="true" property="og:locale" content="ru_RU"/>
+    <meta data-rh="true" property="al:web:should_fallback" content="true"/>
+    <meta data-rh="true" name="twitter:title" content="FPTN Project"/>
+    <meta data-rh="true" property="og:image" content="https://batchar2.github.io/fptn/images/fptn.png"/>
+    <meta data-rh="true" property="og:image:width" content="1200"/>
+    <meta data-rh="true" property="og:image:height" content="630"/>
+    <meta data-rh="true" name="twitter:image" content="https://batchar2.github.io/fptn/images/fptn.png"/>
+    <meta data-rh="true" property="vk:image" content="https://batchar2.github.io/fptn/images/fptn.png"/>
+    <link data-rh="true" rel="canonical" href="https://batchar2.github.io/fptn"/>
+    <link data-rh="true" rel="icon" type="image/png" href="https://batchar2.github.io/fptn/images/favicon-32x32.png" sizes="32x32"/>
+    <link data-rh="true" rel="image_src" href="https://batchar2.github.io/fptn/images/fptn.png"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google-site-verification" content="XMBHObrFKkhfBziTXGfeqi27fZaRHBTGx76IkN8dCos" />
+    <meta name="yandex-verification" content="f8c4f9389ec28dc1" />
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <title>FPTN Project</title>
+    <style>
+        :root {
+            --blue: #0068fd;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+            position: relative;
+        }
+        p {
+            font-size: 20px;
+            text-align: left;
+        }
+        .sidebar {}
+        .logo {
+            width: 100px;
+            margin-bottom: 20px;
+        }
+        .version-info {
+            font-size: 20px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        .nav-links a {
+            display: block;
+            margin-bottom: 10px;
+            color: var(--blue);
+            text-decoration: none;
+            font-size: 20px;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        .content {
+            flex: 1;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        h1 {
+            font-size: 30px;
+            margin-bottom: 20px;
+            font-weight: 300;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tablink {
+            padding: 10px;
+            border: 0;
+            border-bottom: 1px solid rgba(25,25,28,.4);
+            cursor: pointer;
+            text-align: center;
+            color: rgba(25,25,28,.4);
+            font-size: 20px;
+            background-color: white;
+            margin-right: 32px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+        }
+        .tablink.active {
+            border-bottom: 1px solid #19191c;
+            color: #19191c;
+        }
+        .tablink.active path{
+            fill: #19191c;
+            fill-opacity: 1;
+        }
+        .tablink svg {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+        }
+        .download {
+            align-items: center;
+            margin-bottom: 32px;
+            display: none;
+        }
+        .download.active {
+            display: flex;
+            flex-direction: column;
+        }
+        .download-button {
+            padding: 10px 20px;
+            background-color: var(--blue);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .dropdown-button {
+            cursor: pointer;
+            padding: 8px 36px;
+            border-width: 0;
+            background: var(--blue);
+            border-radius: 24px;
+            color: white;
+            width: 256px;
+            text-align: center!important;
+        }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: #f9f9f9;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            z-index: 1;
+            min-width: 256px;
+            top: 27px;
+        }
+        .dropdown-content a {
+            color: #333;
+            padding: 10px 15px;
+            text-decoration: none;
+            display: block;
+        }
+        .dropdown-content a:hover {
+            background-color: #ddd;
+        }
+        .dropdown:hover .dropdown-content {
+            display: block;
+        }
+        .toolbox-ad {
+            padding: 15px;
+            background-color: #f9f9f9;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            text-align: justify;
+            font-size: 20px;
+            color: #333;
+            /*margin-bottom: 32px;*/
+            margin-top: 32px;
+        }
+
+        .shared-info {
+            margin-bottom: 74px;
+            margin-top: 0;
+        }
+        .toolbox-ad p{
+            margin: 0;
+            padding: 0;
+            margin-bottom: 12px;
+        }
+        .toolbox-ad img{
+            margin-bottom: 12px;
+        }
+        .wrapper {
+            display: flex;
+            gap: 68px;
+            justify-content: space-between;
+        }
+        .item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .logo-svg {
+            margin-right: 12px;
+        }
+        .gth-svg path{
+            fill: white;
+        }
+        .center-flex {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .right-flex {
+            display: flex;
+            align-items: center;
+        }
+        .right-flex {
+            display: flex;
+            align-items: center;
+        }
+        .right-flex > * {
+            justify-content: flex-end;
+        }
+        .top-margin {
+            margin-top: 32px;
+        }
+
+        .footer {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 60px;
+            line-height: 60px;
+            background-color: rgb(33, 37, 41);
+        }
+        .white {
+            color: white!important;
+        }
+        .center {
+            text-align: center;
+        }
+        .img-center {
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+        }
+        .language-ru {
+            display: none;
+        }
+        .language-en {
+            display: none;
+        }
+
+        .language-ru.active {
+            display: block;
+            text-align: justify;
+        }
+        .language-en.active {
+            display: block;
+            text-align: justify;
+        }
+        .top-text.active p{
+            text-align: justify!important;
+        }
+
+        span.language-ru.active {
+            display: inline;
+        }
+        span.language-en.active {
+            display: inline;
+        }
+
+        .navbar-expand-md .navbar-nav .dropdown-menu {
+            position: absolute;
+        }
+
+        .nav-link:focus-visible {
+            outline: 0;
+            box-shadow: none;
+        }
+        .info svg{
+            margin-left: 8px;
+            margin-top: -1px;
+        }
+        .info {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .swiper-slide {
+            height: 550px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @media (max-width: 768px) {
+            .wrapper {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .info {
+                display: none;
+            }
+            .dropdown-toggle {
+                text-align: right;
+            }
+            .dropdown-menu {
+                right: 0;
+                left: initial!important;
+            }
+            .tabs {
+                overflow: scroll;
+                padding-bottom: 8px;
+            }
+            .tabs .tablink {
+                font-size: 14px;
+                margin-right: 14px;
+                padding: 8px;
+            }
+            .content {
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark">
+        <div class="container">
+            <div class="col col-lg-2 center-flex me-auto">
+                <a class="navbar-brand" href="https://batchar2.github.io/fptn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="38" viewBox="0 0 40 38" fill="none">
+                        <path d="M25.1094 10.4316L24.5507 10.52L25.1085 10.4295C25.0525 10.1815 24.9574 10.1325 24.9174 10.0837C24.749 9.95077 24.6976 9.94925 24.5746 9.88869C23.814 9.56378 21.4048 8.74772 19.0696 7.581C17.5931 6.84215 16.1281 5.97915 14.9999 5.2948C14.4345 4.95384 13.9534 4.65497 13.5909 4.43756C13.408 4.32855 13.2575 4.24013 13.1315 4.1726C13.0231 4.12112 12.981 4.08267 12.8642 4.04512C12.7857 4.01453 12.7082 4 12.6352 4C12.5568 4 12.4793 4.01453 12.4063 4.04512C12.2897 4.08297 12.2483 4.12112 12.1398 4.1726C11.308 4.6259 8.79746 6.28377 6.2027 7.581C4.83068 8.26625 3.41869 8.83644 2.34403 9.25098C1.80564 9.4584 1.35537 9.62586 1.02803 9.75576C0.863001 9.81935 0.731582 9.87325 0.624086 9.9217C0.570186 9.94623 0.522645 9.96863 0.464204 10.0032C0.43574 10.0216 0.404248 10.0407 0.355193 10.0846C0.313708 10.1331 0.21681 10.183 0.163213 10.4319C0.0505688 11.1229 0 11.8267 0 12.5416C0.00757018 17.4419 2.40308 22.7426 5.11775 26.8632C6.47826 28.9219 7.92174 30.6816 9.21473 31.9455C9.86395 32.5759 10.4723 33.0855 11.0301 33.4504C11.5924 33.8068 12.0908 34.0451 12.628 34.0533H12.6355H12.6455C13.6948 34.0088 14.7619 33.1985 16.0833 31.9485C19.9526 28.1561 25.2447 19.8962 25.2726 12.5537C25.2723 11.8348 25.219 11.126 25.1094 10.4316ZM19.2334 26.2433C17.9174 28.24 16.5154 29.9476 15.2933 31.1367C14.0972 32.3376 12.9686 32.9665 12.6452 32.9205V32.9238H12.6277V32.9205C12.4923 32.9305 12.1105 32.8076 11.6475 32.4987C9.98658 31.4319 7.29311 28.4126 5.09322 24.6878C2.87909 20.9596 1.12705 16.502 1.1322 12.5416C1.1322 11.9787 1.16762 11.427 1.23969 10.8877C1.99792 10.5782 4.40766 9.74304 6.709 8.59238C8.23151 7.83021 9.7189 6.95358 10.8596 6.26409C11.4289 5.91828 11.9121 5.61972 12.264 5.40987C12.4145 5.31842 12.5414 5.24393 12.6364 5.19094C13.3998 5.61578 15.9598 7.29121 18.563 8.59268C19.9865 9.30488 21.4309 9.88869 22.5183 10.3087C23.063 10.5176 23.5187 10.6872 23.8312 10.8095C23.9063 10.838 23.9733 10.8655 24.0302 10.888C24.1038 11.4318 24.1374 11.9871 24.1374 12.554C24.1477 17.081 21.869 22.2517 19.2334 26.2433ZM17.9698 9.46204C15.3808 8.16905 12.8751 6.4591 12.6416 6.42821V6.42609C12.6401 6.42609 12.6371 6.42609 12.6371 6.42609C12.6365 6.42609 12.6325 6.42609 12.6325 6.42609V6.42821C12.3975 6.4591 9.89241 8.16905 7.30432 9.46204C4.88913 10.6696 2.37401 11.4524 2.35554 11.5629C1.80231 15.0198 3.11074 19.0368 4.97967 22.5636L18.0458 9.49959C18.0204 9.48747 17.9952 9.47597 17.9698 9.46204ZM21.9829 11.169L7.09811 26.0544C9.35674 29.3353 11.7365 31.6275 12.6292 31.6275C12.6316 31.6275 12.6337 31.6275 12.6368 31.6275C12.6392 31.6275 12.6413 31.6275 12.6437 31.6275C14.6447 31.6275 24.2612 19.9425 22.9174 11.5629C22.9107 11.5223 22.5543 11.3858 21.9829 11.169Z" fill="white"/>
+                    </svg>
+                    FPTN Project
+                </a>
+            </div>
+            <div class="col lang right-flex col-lg-1">
+                <div class="collapse navbar-collapse show" id="navbarNavDarkDropdown">
+                    <ul class="navbar-nav">
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDarkDropdownMenuLink" role="button" data-bs-toggle="dropdown" aria-expanded="false"></a>
+                            <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarDarkDropdownMenuLink">
+                                <li><a class="dropdown-item" href="#" onclick="editLan('en')">English</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="editLan('ru')">Русский</a></li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col info col-lg-2" >
+                <a class="navbar-brand" href="https://github.com/batchar2/fptn" target="_blank">
+                    <svg class="gth-svg" height="32" aria-hidden="true" viewBox="0 0 24 24" width="32" data-view-component="true" class="octicon octicon-mark-github">
+                        <path d="M12.5.75C6.146.75 1 5.896 1 12.25c0 5.089 3.292 9.387 7.863 10.91.575.101.79-.244.79-.546 0-.273-.014-1.178-.014-2.142-2.889.532-3.636-.704-3.866-1.35-.13-.331-.69-1.352-1.18-1.625-.402-.216-.977-.748-.014-.762.906-.014 1.553.834 1.769 1.179 1.035 1.74 2.688 1.25 3.349.948.1-.747.402-1.25.733-1.538-2.559-.287-5.232-1.279-5.232-5.678 0-1.25.445-2.285 1.178-3.09-.115-.288-.517-1.467.115-3.048 0 0 .963-.302 3.163 1.179.92-.259 1.897-.388 2.875-.388.977 0 1.955.13 2.875.388 2.2-1.495 3.162-1.179 3.162-1.179.633 1.581.23 2.76.115 3.048.733.805 1.179 1.825 1.179 3.09 0 4.413-2.688 5.39-5.247 5.678.417.36.776 1.05.776 2.128 0 1.538-.014 2.774-.014 3.162 0 .302.216.662.79.547C20.709 21.637 24 17.324 24 12.25 24 5.896 18.854.75 12.5.75Z"></path>
+                    </svg>
+                </a>
+                <a class="navbar-brand" href="https://t.me/fptn_project" target="_blank">
+                    <svg style="fill: white; height: 32px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512">
+                        <path d="m248 8c-137 0-248 111-248 248s111 248 248 248 248-111 248-248-111-248-248-248zm121.8 169.9-40.7 191.8c-3 13.6-11.1 16.9-22.4 10.5l-62-45.7-29.9 28.8c-3.3 3.3-6.1 6.1-12.5 6.1l4.4-63.1 114.9-103.8c5-4.4-1.1-6.9-7.7-2.5l-142 89.4-61.2-19.1c-13.3-4.2-13.6-13.3 2.8-19.7l239.1-92.2c11.1-4 20.8 2.7 17.2 19.5z"/>
+                    </svg>
+                </a>
+                <a class="navbar-brand" href="https://boosty.to/fptn" target="_blank">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 235.6 292.2" width="32" height="32" aria-hidden="true" role="img" style="fill: white;" >
+                        <path fill="currentColor" d="M44.3 164.5L76.9 51.6H127l-10.1 35c-.1.2-.2.4-.3.6L90 179.6h24.8c-10.4 25.9-18.5 46.2-24.3 60.9-45.8-.5-58.6-33.3-47.4-72.1M90.7 240.6l60.4-86.9h-25.6l22.3-55.7c38.2 4 56.2 34.1 45.6 70.5-11.3 39.1-57.1 72.1-101.7 72.1h-.6z"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </nav>
+</header>
+<div class="container top-margin">
+    <div class="row">
+        <div class="col col-lg-3">
+            <aside class="sidebar">
+                <img src="images/fptn.png" alt="" width="300">
+                <div class="version-info">
+                    <p>Version: <span id="version">2024.2.0.1</span></p>
+                </div>
+                <nav class="nav-links">
+                    <a href="/" onclick="downloadUrl('notes')">
+                        <span class="language-en">Release notes</span>
+                        <span class="language-ru">Описание релиза</span>
+                    </a>
+                </nav>
+            </aside>
+        </div>
+        <div class="col col-lg-9">
+            <main class="content">
+                <div class="language-en top-text">
+                    <h1>FPTN Project</h1>
+
+                    <br>
+
+                    <p>
+                        FPTN is a fully custom-built VPN technology — developed from scratch, including the core protocol, server implementation, and cross-platform clients.
+                        It is a non-commercial, open-source project developed by volunteers and designed to bypass censorship.
+                    </p>
+
+                    <p>
+                        The VPN-client is a mobile application or a compact desktop application with an interface located in the system tray.
+                        No registration process is required! We will send the access token via the <a target="_blank" href="https://t.me/fptn_bot">bot</a> on Telegram.
+                    </p>
+
+                    <div class="swiper mySwiper">
+                        <div class="swiper-wrapper">
+                            <div class="swiper-slide">
+                                <img style="width: auto; max-height: 550px" class="img-center" src="images/android/en/04.jpeg" alt="Application"/>
+                            </div>
+                            <div class="swiper-slide">
+                                <img style="width: auto; max-height: 200px" class="img-center" src="images/tray_view_en.png" alt="Application"/>
+                            </div>
+                        </div>
+                        <div class="swiper-pagination"></div>
+                        <div class="swiper-button-next"></div>
+                        <div class="swiper-button-prev"></div>
+                    </div>
+
+                    <p>
+                        FPTN operates over the HTTPS protocol, effectively masking traffic and enabling users to bypass censorship restrictions.
+                        The project's source code is available on <a target="_blank" href="https://github.com/batchar2/fptn">GitHub</a>.
+                    </p>
+                </div>
+
+                <div class="language-ru top-text">
+                    <h1>FPTN Project</h1>
+
+                    </br>
+
+                    <p>
+                        FPTN — это полностью разработанная с нуля технология VPN, включая собственный протокол, сервер и кроссплатформенные клиенты.
+                        Это некоммерческий проект с открытым исходным кодом, развиваемый волонтерами и предназначенный для обхода цензуры.
+                    </p>
+
+                    <p>
+                        VPN-клиент — мобильное приложение или миниатюрная программа для компьютера, интерфейс которой размещается в трее.
+                        Здесь нет процесса регистрации! Мы пришлем токен доступа через <a target="_blank" href="https://t.me/fptn_bot">бота</a> в Telegram
+                    </p>
+
+                    <div class="swiper mySwiper">
+                        <div class="swiper-wrapper">
+                            <div class="swiper-slide">
+                                <img style="width: auto; max-height: 550px" class="img-center" src="images/android/ru/04.jpeg" alt="Application"/>
+                            </div>
+                            <div class="swiper-slide">
+                                <img style="width: auto; max-height: 200px" class="img-center" src="images/tray_view_ru.png" alt="Application"/>
+                            </div>
+                        </div>
+                        <div class="swiper-pagination"></div>
+                        <div class="swiper-button-next"></div>
+                        <div class="swiper-button-prev"></div>
+                    </div>
+
+                    <p>
+                        FPTN работает через протокол HTTPS, эффективно маскируя трафик и позволяя обходить ограничения цензуры.
+                        Исходный код проекта доступен на <a target="_blank" href="https://github.com/batchar2/fptn">Github</a>.
+                    </p>
+                </div>
+
+                <br/>
+
+                <div class="language-en">
+                    <h1>Download FPTN</h1>
+                </div>
+                <div class="language-en">
+                    <h1 class="language-ru">Скачать FPTN</h1>
+                </div>
+
+                <div class="tabs">
+                    <button class="tablink active" onclick="openTab('android')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M3 20.5V3.50002C3 2.91002 3.34 2.39002 3.84 2.15002L13.69 12L3.84 21.85C3.34 21.6 3 21.09 3 20.5ZM16.81 15.12L6.05 21.34L14.54 12.85L16.81 15.12ZM20.16 10.81C20.5 11.08 20.75 11.5 20.75 12C20.75 12.5 20.53 12.9 20.18 13.18L17.89 14.5L15.39 12L17.89 9.50002L20.16 10.81ZM6.05 2.66002L16.81 8.88002L14.54 11.15L6.05 2.66002Z" fill="#19191C" fill-opacity="0.4"/>
+                        </svg>
+                        Android</button>
+                    <button class="tablink" onclick="openTab('win')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M3.001 5.479L10.378 4.463V11.59H3L3.001 5.479ZM3.001 18.521L10.378 19.538V12.498H3L3.001 18.521ZM11.189 19.646L21.001 21V12.498H11.189V19.646ZM11.189 4.354V11.59H21.001V3L11.189 4.354Z" fill="#19191C" fill-opacity="0.4"/>
+                        </svg>
+                        Windows
+                    </button>
+                    <button class="tablink" onclick="openTab('macos')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M21.18 16.5222C20.6828 17.623 20.445 18.1152 19.8065 19.0879C18.9144 20.4465 17.6549 22.1417 16.0977 22.1533C14.7125 22.165 14.355 21.2496 12.4752 21.2645C10.5954 21.2737 10.2039 22.1699 8.81708 22.1558C7.25987 22.1417 6.06764 20.6144 5.17471 19.2584C2.67802 15.4547 2.41447 10.9968 3.95754 8.62477C5.04917 6.94285 6.77682 5.95515 8.39888 5.95515C10.0509 5.95515 11.0893 6.86303 12.4553 6.86303C13.7805 6.86303 14.5878 5.95265 16.4984 5.95265C17.9434 5.95265 19.4715 6.73999 20.5631 8.09849C16.9914 10.0556 17.5717 15.1571 21.18 16.5222ZM15.0484 4.43451C15.7435 3.54242 16.2706 2.28368 16.0794 1C14.9453 1.07732 13.6192 1.80147 12.8444 2.73929C12.1427 3.59314 11.5607 4.86185 11.7877 6.089C13.0248 6.12891 14.3052 5.39146 15.0484 4.43451Z" fill="#19191C" fill-opacity="0.4"/>
+                        </svg>
+                        MacOS
+                    </button>
+                    <button class="tablink" onclick="openTab('linux')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M22 12C22 14.6522 20.9464 17.1957 19.0711 19.0711C17.1957 20.9464 14.6522 22 12 22C10.6868 22 9.38642 21.7413 8.17317 21.2388C6.95991 20.7362 5.85752 19.9997 4.92893 19.0711C3.05357 17.1957 2 14.6522 2 12C2 9.34784 3.05357 6.8043 4.92893 4.92893C6.8043 3.05357 9.34784 2 12 2C13.3132 2 14.6136 2.25866 15.8268 2.7612C17.0401 3.26375 18.1425 4.00035 19.0711 4.92893C19.9997 5.85752 20.7362 6.95991 21.2388 8.17317C21.7413 9.38642 22 10.6868 22 12ZM14.34 7.74C14.92 8.07 15.65 7.87 16 7.3C16.31 6.73 16.12 6 15.54 5.66C14.97 5.33 14.23 5.5 13.9 6.1C13.57 6.67 13.77 7.41 14.34 7.74ZM11.88 15.5C11.35 15.5 10.85 15.39 10.41 15.18L9.57 16.68C10.27 17 11.05 17.22 11.88 17.22C12.37 17.22 12.83 17.15 13.28 17.03C13.36 16.54 13.64 16.1 14.1 15.84C14.56 15.57 15.08 15.55 15.54 15.72C16.43 14.85 17 13.66 17.09 12.33L15.38 12.31C15.301 13.183 14.8978 13.9947 14.25 14.5852C13.6021 15.1757 12.7566 15.5021 11.88 15.5ZM11.88 8.5C13.72 8.5 15.22 9.89 15.38 11.69L17.09 11.66C17.0076 10.3808 16.4556 9.17711 15.54 8.28C15.08 8.45 14.55 8.42 14.1 8.16C13.64 7.9 13.36 7.45 13.28 6.97C12.83 6.85 12.37 6.78 11.88 6.78C11.05 6.78 10.27 6.97 9.57 7.32L10.41 8.82C10.85 8.61 11.35 8.5 11.88 8.5ZM8.37 12C8.37 10.81 8.96 9.76 9.86 9.13L9 7.65C7.92648 8.36101 7.15364 9.44371 6.83 10.69C7.21 11 7.45 11.47 7.45 12C7.45 12.53 7.21 13 6.83 13.31C7.15412 14.5534 7.92714 15.6328 9 16.34L9.86 14.87C8.96 14.24 8.37 13.19 8.37 12ZM14.34 16.26C13.77 16.59 13.57 17.32 13.9 17.9C14.23 18.47 14.97 18.67 15.54 18.34C16.12 18 16.31 17.27 16 16.7C15.65 16.12 14.92 15.93 14.34 16.26ZM5.76 10.8C5.1 10.8 4.56 11.34 4.56 12C4.56 12.66 5.1 13.2 5.76 13.2C6.43 13.2 6.96 12.66 6.96 12C6.96 11.34 6.43 10.8 5.76 10.8Z" fill="#19191C" fill-opacity="0.4"/>
+                        </svg>
+                        Linux
+                    </button>
+                </div>
+
+                <div class="download active android">
+                    <div class="wrapper">
+                        <div class="item">
+                            <p>
+                                <span class="language-en">Google play</span>
+                                <span class="language-ru">Google play</span>
+                            </p>
+                            <div class="dropdown">
+                                <a class="dropdown-button download_2 language-ru" onclick="downloadUrl('google_play')">Скачать</a>
+                                <a class="dropdown-button download_2 language-en" onclick="downloadUrl('google_play')">Download</a>
+                            </div>
+                        </div>
+                        <div class="item">
+                            <p>
+                                <span class="language-en">Download Android app from the site</span>
+                                <span class="language-ru">Скачать Android приложение с сайта</span>
+                            </p>
+                            <div class="dropdown">
+                                <a class="dropdown-button download_2 language-ru" onclick="downloadUrl('android_apk')">Скачать</a>
+                                <a class="dropdown-button download_2 language-en" onclick="downloadUrl('android_apk')">Download</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="toolbox-ad language-ru">
+                        <h3>Установка и настройка</h3>
+                        <br/>
+
+                        <p>
+                            Перейдите в <a target="_blank" href="https://t.me/fptn_bot">Telegram-бот</a> и сгенерируйте токен командой <code>/token</code>, затем скопируйте его.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/telegram_token_ru.png" alt="Settings"/>
+
+                            <br/>
+                            Вставьте токен в соответствующее поле.
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 300px" class="img-center" src="images/android/ru/01.jpeg" alt="Application"/>
+                            <br/>
+                            Войдите в приложение, используя полученный токен.
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 300px" class="img-center" src="images/android/ru/02.jpeg" alt="Application"/>
+                            <br/>
+                            Выберите VPN-сервер из списка доступных (Режим "Авто" подберет наиболее оптимальный сервер или можете выбрать сервер из списка доступных). Для включения VPN-сервиса нажмите на кнопку в центре экрана, которая активирует подключение к выбранному серверу.
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 300px" class="img-center" src="images/android/ru/03.jpeg" alt="Application"/>
+                            <br/>
+                            Готово!
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 300px" class="img-center" src="images/android/ru/04.jpeg" alt="Application"/>
+
+                        </p>
+
+                    </div>
+
+                    <div class="toolbox-ad language-en">
+                        <h3>Installation and Setup</h3>
+                        <br/>
+
+                        <p>
+                            Go to the <a target="_blank" href="https://t.me/fptn_bot">Telegram bot</a> and generate your token by sending the <code>/token</code> command. Then copy the token.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/telegram_token_en.png" alt="Settings"/>
+
+                            <br/>
+                            Insert the token into the appropriate field.
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 300px" class="img-center" src="images/android/en/01.jpeg" alt="Application"/>
+                            <br/>
+                            Log into the application using the obtained token.
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 300px" class="img-center" src="images/android/en/02.jpeg" alt="Application"/>
+                            <br/>
+                            Select a VPN server from the list of available servers (the "Auto" mode will choose the most optimal server, or you can manually select a server from the list). To enable the VPN service, press the button in the center of the screen, which will activate the connection to the selected server.
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 300px" class="img-center" src="images/android/en/03.jpeg" alt="Application"/>
+                            <br/>
+                            Done!
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 300px" class="img-center" src="images/android/en/04.jpeg" alt="Application"/>
+                        </p>
+
+                    </div>
+
+
+                </div>
+                <div class="download macos">
+                    <div class="wrapper">
+                        <div class="item">
+                            <p>
+                                <span class="language-en">MacOS client (Apple Silicon)</span>
+                                <span class="language-ru">Клиент для MacOS (Apple Silicon)</span>
+                            </p>
+                            <div class="dropdown">
+                                <a class="dropdown-button download_2 language-ru" onclick="downloadUrl('macos_m')">Скачать</a>
+                                <a class="dropdown-button download_2 language-en" onclick="downloadUrl('macos_m')">Download</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="toolbox-ad language-ru">
+                        <h3>Установка и настройка</h3>
+
+                        <br/>
+
+                        <p>
+                            При установке клиента на MacOS вам может понадобиться более детальная <a target="_blank" href="https://github.com/batchar2/fptn/blob/master/docs/macos/README.md">инструкция</a> из-за проблем с драйверами
+                        </p>
+
+                        <p>
+                            Перейдите в <a target="_blank" href="https://t.me/fptn_bot">Telegram-бот</a> и сгенерируйте токен командой <code>/token</code>, затем скопируйте его.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/telegram_token_ru.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            После запуска приложения нажмите на иконку в системном трее чтобы открыть контекстное меню.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/macos/ru/client.png" alt="Application"/>
+                        </p>
+
+                        <p>
+                            Вставьте сюда токен из <a target="_blank" href="https://t.me/fptn_bot">Telegram-бота</a>
+                            <img style="width: 100%" class="img-center" src="images/macos/ru/settings-2.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            Сохраните токен.
+                            <img style="width: 100%" class="img-center" src="images/macos/ru/settings-3.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            Закройте окно настроек и попробуйте подключиться
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/macos/ru/running-client.png" alt="Settings"/>
+                        </p>
+                    </div>
+
+                    <div class="toolbox-ad language-en">
+                        <h3>Installation and Setup</h3>
+
+                        <br/>
+
+                        <p>
+                            When installing the client on macOS, you may need a more detailed <a target="_blank" href="https://github.com/batchar2/fptn/blob/master/docs/macos/README.md">guide</a> due to driver-related issues.
+                        </p>
+
+                        <p>
+                            Go to the <a target="_blank" href="https://t.me/fptn_bot">Telegram bot</a> and generate your token by sending the <code>/token</code> command. Then copy the token.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/telegram_token_en.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            After launching the app, click on the tray icon to open the context menu.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/macos/en/client.png" alt="Application"/>
+                        </p>
+
+                        <p>
+                            Paste the token you received from the <a target="_blank" href="https://t.me/fptn_bot">Telegram bot</a> into the token field.
+                            <img style="width: 100%" class="img-center" src="images/macos/en/settings-2.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            Save the token.
+                            <img style="width: 100%" class="img-center" src="images/macos/en/settings-3.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            Close the settings window and try connecting.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/macos/en/running-client.png" alt="Settings"/>
+                        </p>
+                    </div>
+                </div>
+                <div class="download linux">
+                    <div class="wrapper">
+                        <div class="item">
+                            <p>
+                                <span class="language-en">Download Linux client</span>
+                                <span class="language-ru">Скачать Linux клиент</span>
+                            </p>
+                            <div class="dropdown">
+                                <a class="dropdown-button download_2 language-ru" onclick="downloadUrl('linux_l_server')">Linux клиент</a>
+                                <a class="dropdown-button download_2 language-en" onclick="downloadUrl('linux_l_server')">Linux client</a>
+                                <div class="dropdown-content">
+                                    <a class="language-ru" href="#" onclick="downloadUrl('linux_l_client')">Ubuntu (x86_64)</a>
+                                    <a class="language-ru" href="#" onclick="downloadUrl('linux_a_client')">Ubuntu (ARM64)</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="item">
+                            <p>
+                                <span class="language-en">Commandline tools</span>
+                                <span class="language-ru">Инструменты командной строки</span>
+                            </p>
+                            <div class="dropdown">
+                                <a class="dropdown-button download_2 language-ru" onclick="downloadUrl('linux_l_client')">Linux утилиты</a>
+                                <a class="dropdown-button download_2 language-en" onclick="downloadUrl('linux_l_client')">Linux utils</a>
+                                <div class="dropdown-content">
+                                    <a href="#" onclick="downloadUrl('linux_l_server')">FPTN Server (Ubuntu x86_64)</a>
+                                    <a href="#" onclick="downloadUrl('linux_a_server')">FPTN Server (Ubuntu ARM64)</a>
+                                    <a href="#" onclick="downloadUrl('linux_l_client_cli')">CmdClient (Ubuntu x86_64)</a>
+                                    <a href="#" onclick="downloadUrl('linux_a_client_cli')">CmdClient (Ubuntu ARM64)</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="toolbox-ad language-ru">
+                        <h3>Установка и настройка</h3>
+
+                        <br/>
+
+                        <p>
+                            Скачайте .deb пакет FPTN-клиента и установите его вместе со всеми зависимостями, выполнив следующую команду (не забудьте заменить путь до пакета):
+                        </p>
+
+                        <code>
+                            sudo apt install -f ~/Downloads/path-to-deb
+                        </code>
+                        <br/>
+                        <br/>
+
+                        <p>
+                            Перейдите в <a target="_blank" href="https://t.me/fptn_bot">Telegram-бот</a> и сгенерируйте токен командой <code>/token</code>, затем скопируйте его.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/telegram_token_ru.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            Запустите FPTN-клиент.
+                            <img style="width: 100%" class="img-center" src="images/ubuntu/ru/1-icon.png" alt="Application"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Нажмите на иконку FPTN-клиента в системном трее, чтобы открыть контекстное меню.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/ubuntu/ru/2-tray.png" alt="Application"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Откройте настройки FPTN-клиента и нажмите кнопку "Добавить токен".
+                            <img style="width: 100%" src="images/ubuntu/ru/3-settings.png" alt="Settings"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Вставьте сюда токен из <a target="_blank" href="https://t.me/fptn_bot">Telegram-бота</a> и сохраните
+                            <img style="width: 100%" src="images/ubuntu/ru/4-settings.png" alt="Settings"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Закройте окно настроек
+                            <img style="width: 100%" src="images/ubuntu/ru/5-settings.png" alt="Settings"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            В системном трее кликните по иконке приложения и выберите "Умное подключение". Эта функция автоматически подберет наиболее оптимальный сервер.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/ubuntu/ru/6-running-client.png" alt="Settings"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Готово!
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/ubuntu/ru/7-running-client.png" alt="Settings"/>
+                        </p>
+                    </div>
+
+
+                    <div class="toolbox-ad language-en">
+                        <h3>Installation and Setup</h3>
+                        <br/>
+
+                        <p>
+                            Download the .deb package for the FPTN client and install it along with all dependencies by running the following command (make sure to replace the package path):
+                        </p>
+
+                        <code>
+                            sudo apt install -f ~/Downloads/path-to-deb
+                        </code>
+                        <br/>
+                        <br/>
+
+                        <p>
+                            Go to the <a target="_blank" href="https://t.me/fptn_bot">Telegram bot</a> and generate a token by sending the <code>/token</code> command, then copy it.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/telegram_token_ru.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            Launch the FPTN client.
+                            <img style="width: 100%" class="img-center" src="images/ubuntu/en/1-icon.png" alt="Application"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Click on the FPTN client icon in the system tray to open the context menu.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/ubuntu/en/2-tray.png" alt="Application"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Open the FPTN client settings and click the "Add token" button.
+                            <img style="width: 100%" src="images/ubuntu/en/3-settings.png" alt="Settings"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Paste the token from the <a target="_blank" href="https://t.me/fptn_bot">Telegram bot</a> here and save it.
+                            <img style="width: 100%" src="images/ubuntu/en/4-settings.png" alt="Settings"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Close the settings window.
+                            <img style="width: 100%" src="images/ubuntu/en/5-settings.png" alt="Settings"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            In the system tray, click on the application icon and select "Smart Connection". This feature will automatically select the most optimal server.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/ubuntu/en/6-running-client.png" alt="Settings"/>
+                            <br/>
+                        </p>
+
+                        <p>
+                            Done!
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/ubuntu/en/7-running-client.png" alt="Settings"/>
+                        </p>
+                    </div>
+
+
+                </div>
+                <div class="download win">
+                    <p>
+                        <span class="language-en">Download the client for Windows (supports Windows 10 and Windows 11, x86_64 architecture)</span>
+                        <span class="language-ru">Скачать клиент для Windows (поддерживаются Windows 10 и Windows 11, архитектура x86_64)</span>
+                    </p>
+                    <div class="dropdown">
+                        <a class="dropdown-button download_2 language-ru" onclick="downloadUrl('w_client')">Скачать</a>
+                        <a class="dropdown-button download_2 language-en" onclick="downloadUrl('w_client')">Download</a>
+                    </div>
+
+                    <div class="toolbox-ad language-ru">
+                        <h3>Установка и настройка</h3>
+                        <br/>
+
+                        <p>
+                            Перейдите в <a target="_blank" href="https://t.me/fptn_bot">Telegram-бот</a> и сгенерируйте токен командой <code>/token</code>, затем скопируйте его.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/telegram_token_ru.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            Скачайте и запустите установщик. При запуске установщика, Windows покажет окно с предупреждением, нажмите "подробнее".
+
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/1_protect.png" alt="Application"/>
+
+                            И нажмите на кнопку "Запустить в любом случае".
+
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/2_protect.png" alt="Application"/>
+
+                            После чего подтвердите запуск установщика.
+
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/3_protect.png" alt="Application"/>
+
+                            После завершения установки нажмите кнопку завершить и приложение запустится автоматически.
+
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/4_launch.png" alt="Application"/>
+
+                            После запуска клиента в системном трее появится иконка приложения. Кликните по иконке и откройте настройки.
+
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/ru/5_tray.png" alt="Application"/>
+                            <br/>
+                            Нажмите кнопку "Добавить токен".
+                            <br/>
+                            <img style="width: 100%" class="img-center" src="images/windows/ru/7_load_config.png" alt="Application"/>
+                            <br/>
+                            Вставьте сюда токен из <a target="_blank" href="https://t.me/fptn_bot">Telegram-бота</a> и сохраните
+                            <br/><br/>
+                            <img style="width: 100%" class="img-center" src="images/windows/ru/8_select_file.png" alt="Application"/>
+                            <br/>
+                            После открытия появится список доступных серверов, далее нужно просто закрыть окно настроек.
+                            <br/><br/>
+                            <img style="width: 100%" class="img-center" src="images/windows/ru/9_save.png" alt="Application"/>
+                            <br/>
+                            В системном трее кликните по иконке приложения и выберите "Умное подключение". "Умное подключение" подберет наиболее оптимальный сервер.
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/ru/10_run.png" alt="Application"/>
+                            <br/>
+                            Готово!
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/ru/11_running.png" alt="Application"/>
+                        </p>
+
+                    </div>
+
+                    <div class="toolbox-ad language-en">
+                        <h3>Installation and Setup</h3>
+                        <br/>
+
+                        <p>
+                            Go to the <a target="_blank" href="https://t.me/fptn_bot">Telegram bot</a> and generate a token by sending the <code>/token</code> command, then copy it.
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/telegram_token_ru.png" alt="Settings"/>
+                        </p>
+
+                        <p>
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/1_protect.png" alt="Application"/>
+
+                            Then click "Run anyway".
+
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/2_protect.png" alt="Application"/>
+
+                            Confirm the installer launch.
+
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/3_protect.png" alt="Application"/>
+
+                            After the installation is complete, click the finish button, and the application will launch automatically.
+
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/4_launch.png" alt="Application"/>
+
+                            After the client launches, the application icon will appear in the system tray. Click on the icon and open the settings.
+
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/5_tray.png" alt="Application"/>
+                            <br/>
+                            Click the "Add Token" button.
+                            <br/>
+                            <img style="width: 100%" class="img-center" src="images/windows/en/7_load_config.png" alt="Application"/>
+                            <br/>
+                            Paste the token from the <a target="_blank" href="https://t.me/fptn_bot">Telegram bot</a> and save it.
+                            <br/><br/>
+                            <img style="width: 100%" class="img-center" src="images/windows/en/8_select_file.png" alt="Application"/>
+                            <br/>
+                            After saving, a list of available servers will appear. Simply close the settings window.
+                            <br/><br/>
+                            <img style="width: 100%" class="img-center" src="images/windows/en/9_save.png" alt="Application"/>
+                            <br/>
+                            In the system tray, click on the application icon and select "Smart Connection". This will choose the most optimal server for you.
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/10_run.png" alt="Application"/>
+                            <br/>
+                            Done!
+                            <br/><br/>
+                            <img style="width: 100%; max-width: 400px" class="img-center" src="images/windows/en/11_running.png" alt="Application"/>
+                        </p>
+
+                    </div>
+
+
+                </div>
+
+                <div class="toolbox-ad shared-info language-ru">
+                    <p>
+                        А еще, можно легко превратить RaspberryPi/OrangePi в WiFi-точку доступа и установить на неё FPTN-клиент.
+                        В этом случае все устройства, подключённые к WiFi, получат доступ к интернету, обходя любые ограничения.
+                        <a target="_blank" href="https://github.com/batchar2/fptn/blob/master/deploy/linux/wifi/README.ru.md">Информация тут</a>
+
+                        <img style="width: 100%" src="images/orangepi.jpg" alt="Settings"/>
+                    </p>
+                    <p>Любую помощь можно получить в <a href="https://t.me/fptn_project" target="_blank">
+                        нашем Telegram чате</a>!</p>
+
+                </div>
+                <div class="toolbox-ad shared-info language-en">
+                    <p>
+                        You can also easily turn a Raspberry Pi or Orange Pi into a WiFi access point and install the FPTN client on it.
+                        In this case, all devices connected to the WiFi will have unrestricted internet access, bypassing any limitations.
+                        <a target="_blank" href="https://github.com/batchar2/fptn/blob/master/deploy/linux/wifi/README.ru.md">More information here</a>
+
+                        <img style="width: 100%" src="images/orangepi.jpg" alt="Settings"/>
+                    </p>
+                    <p>For any assistance, feel free to join <a href="https://t.me/fptn_project" target="_blank">
+                        our Telegram chat</a>!</p>
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+<footer class="footer">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="white center">
+                FPTN Project 2024
+            </div>
+        </div>
+    </div>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+<script>
+    const owner = 'batchar2';
+    const repo = 'fptn';
+    let tag_name = ''
+
+    fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`)
+        .then(response => response.json())
+        .then(data => {
+            const releaseInfo = document.getElementById('version');
+            releaseInfo.innerHTML = data.tag_name;
+            tag_name = data.tag_name
+        })
+        .catch(error => {
+            console.error('Error fetching release data:', error);
+            document.getElementById('release-info').textContent = 'Failed to load release information.';
+        })
+    function openTab(tabName) {
+        const tabs = document.getElementsByClassName('tablink');
+        const downloads = document.getElementsByClassName('download');
+        for (let i = 0; i < tabs.length; i++) {
+            tabs[i].classList.remove('active');
+            downloads[i].classList.remove('active');
+            if (downloads[i].classList.contains(tabName)) {
+                downloads[i].classList.add('active');
+            }
+        }
+        document.querySelector(`[onclick="openTab('${tabName}')"]`).classList.add('active');
+    }
+    function downloadUrl(name) {
+        let url = ''
+        switch (name) {
+            case 'macos_m':
+                url = `https://github.com/${owner}/${repo}/releases/latest/download/fptn-client-${tag_name}-apple-silicon.pkg`
+            break;
+            case 'macos_intel':
+                url = `https://github.com/${owner}/${repo}/releases/latest/download/fptn-client-${tag_name}-intel.pkg`
+            break;
+            case 'linux_l_server':
+                url = `https://github.com/${owner}/${repo}/releases/latest/download/fptn-server-${tag_name}-ubuntu22.04-amd64.deb`
+                break;
+            case 'linux_a_server':
+                url = `https://github.com/${owner}/${repo}/releases/latest/download/fptn-server-${tag_name}-ubuntu22.04-arm64.deb`
+                break;
+            case 'linux_l_client':
+                url = `https://github.com/${owner}/${repo}/releases/latest/download/fptn-client-${tag_name}-ubuntu22.04-amd64.deb`
+                break;
+            case 'linux_a_client':
+                url = `https://github.com/${owner}/${repo}/releases/latest/download/fptn-client-${tag_name}-ubuntu22.04-arm64.deb`
+                break;
+            case 'linux_l_client_cli':
+                url = `https://github.com/${owner}/${repo}/releases/latest/download/fptn-client-cli-${tag_name}-ubuntu22.04-amd64.deb`
+                break;
+            case 'linux_a_client_cli':
+                url = `https://github.com/${owner}/${repo}/releases/latest/download/fptn-client-cli-${tag_name}-ubuntu22.04-arm64.deb`
+                break;
+            case 'w_client':
+                url = `https://github.com/${owner}/${repo}/releases/latest/download/FptnClientInstaller-${tag_name}-windows-x64_x86.zip`
+                break;
+            case 'notes':
+                url = `https://github.com/${owner}/${repo}/releases/latest`
+                break;
+            case 'android_apk':
+                url = `https://storage.googleapis.com/fptn.org/APK/fptn-client.apk`
+                break;
+            case 'google_play':
+                url = `https://play.google.com/store/apps/details?id=org.fptn.vpn`
+                break;
+            default:
+        }
+        window.open(url, '_blank').focus();
+    }
+
+    let language = window.navigator.language;
+    let languageFistTwo = language.substr(0,2);
+    let lanDiv = document.querySelector('.dropdown-toggle');
+
+    function hideBlocks(lan) {
+        if (lan === 'ru'){
+            const elements = document.querySelectorAll('.language-ru')
+            elements.forEach(elem => {
+                elem.classList.add('active')
+            })
+            const elementsA = document.querySelectorAll('.language-en')
+            elementsA.forEach(elem => {
+                elem.classList.remove('active')
+            })
+            lanDiv.textContent = 'Русский'
+        } else {
+            const elements = document.querySelectorAll('.language-en')
+            elements.forEach(elem => {
+                elem.classList.add('active')
+            })
+            const elementsA = document.querySelectorAll('.language-ru')
+            elementsA.forEach(elem => {
+                elem.classList.remove('active')
+            })
+            lanDiv.textContent = 'English'
+        }
+    }
+
+    hideBlocks(languageFistTwo)
+
+    function editLan(lan) {
+        hideBlocks(lan)
+    }
+
+    var swiper = new Swiper(".mySwiper", {
+      pagination: {
+        el: ".swiper-pagination",
+      },
+      navigation: {
+        nextEl: ".swiper-button-next",
+        prevEl: ".swiper-button-prev",
+      },
+    });
+</script>
+</body>
+</html>

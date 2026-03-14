@@ -1,0 +1,267 @@
+/*=============================================================================
+Copyright (c) 2024-2025 Stas Skokov
+
+Distributed under the MIT License (https://opensource.org/licenses/MIT)
+=============================================================================*/
+
+#include "vpn/http/client.h"
+
+#include <memory>
+#include <string>
+#include <utility>
+
+#include <boost/process/v1/io.hpp>
+#include <fmt/format.h>  // NOLINT(build/include_order)
+#include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>  // NOLINT(build/include_order)
+
+#include "common/network/ip_address.h"
+
+#include "fptn-protocol-lib/https/api_client/api_client.h"
+#include "fptn-protocol-lib/https/obfuscator/methods/tls/tls_obfuscator.h"
+#include "routing/route_manager.h"
+
+using fptn::common::network::IPv4Address;
+using fptn::common::network::IPv6Address;
+using fptn::protocol::https::ApiClient;
+using fptn::vpn::http::Client;
+
+Client::Client(IPv4Address server_ip,
+    int server_port,
+    IPv4Address tun_interface_address_ipv4,
+    IPv6Address tun_interface_address_ipv6,
+    std::string sni,
+    std::string md5_fingerprint,
+    fptn::protocol::https::CensorshipStrategy censorship_strategy,
+    NewIPPacketCallback new_ip_pkt_callback)
+    : running_(false),
+      server_ip_(std::move(server_ip)),
+      server_port_(server_port),
+      tun_interface_address_ipv4_(std::move(tun_interface_address_ipv4)),
+      tun_interface_address_ipv6_(std::move(tun_interface_address_ipv6)),
+      sni_(std::move(sni)),
+      md5_fingerprint_(std::move(md5_fingerprint)),
+      censorship_strategy_(censorship_strategy),
+      new_ip_pkt_callback_(std::move(new_ip_pkt_callback)),
+      reconnection_attempts_(kMaxReconnectionAttempts_) {}
+
+Client::~Client() { Stop(); }
+
+bool Client::Login(
+    const std::string& username, const std::string& password, int timeout_sec) {
+  const std::string request = fmt::format(
+      R"({{ "username": "{}", "password": "{}" }})", username, password);
+
+  const std::string ip = server_ip_.ToString();
+  ApiClient cli(ip, server_port_, sni_, md5_fingerprint_, censorship_strategy_);
+
+  const auto resp =
+      cli.Post("/api/v1/login", request, "application/json", timeout_sec);
+  if (resp.code == 200) {
+    try {
+      const auto msg = resp.Json();
+      if (!msg.contains("access_token")) {
+        SPDLOG_ERROR(
+            "Error: Access token not found in the response. Check your "
+            "conection");
+      } else {
+        access_token_ = msg["access_token"];
+        SPDLOG_INFO("Login successful");
+        return true;
+      }
+    } catch (const nlohmann::json::parse_error& e) {
+      latest_error_ = e.what();
+      SPDLOG_ERROR("Error parsing JSON response: {} ", e.what());
+    } catch (const std::exception& ex) {
+      latest_error_ = ex.what();
+      SPDLOG_ERROR("Exception: {}", ex.what());
+    }
+  } else {
+    latest_error_ = resp.errmsg;
+    SPDLOG_ERROR(
+        "Error: Request failed code: {} msg: {}", resp.code, resp.errmsg);
+  }
+  return false;
+}
+
+std::pair<IPv4Address, IPv6Address> Client::GetDns() {
+  SPDLOG_INFO("Obtained DNS server address. Connecting to {}:{}",
+      server_ip_.ToString(), server_port_);
+
+  const std::string ip = server_ip_.ToString();
+  ApiClient cli(ip, server_port_, sni_, md5_fingerprint_, censorship_strategy_);
+
+  const auto resp = cli.Get("/api/v1/dns");
+  if (resp.code == 200) {
+    try {
+      const auto msg = resp.Json();
+      if (!msg.contains("dns")) {
+        SPDLOG_ERROR(
+            "Error: dns not found in the response. Check your connection");
+      } else {
+        const std::string dns_ipv4 = msg["dns"];
+        const std::string dns_ipv6 =
+            (msg.contains("dns_ipv6") ? msg["dns_ipv6"]
+                                      : FPTN_SERVER_DEFAULT_ADDRESS_IP6);
+        return {IPv4Address(dns_ipv4), IPv6Address(dns_ipv6)};
+      }
+    } catch (const nlohmann::json::parse_error& e) {
+      latest_error_ = e.what();
+      SPDLOG_ERROR("Error parsing JSON response: {}", e.what());
+    } catch (const std::exception& ex) {
+      latest_error_ = ex.what();
+      SPDLOG_ERROR("Exception: {}", ex.what());
+    }
+  } else {
+    latest_error_ = resp.errmsg;
+    SPDLOG_ERROR(
+        "Error: Request failed code: {} msg: {}", resp.code, resp.errmsg);
+  }
+  return {IPv4Address(), IPv6Address()};
+}
+
+void Client::SetRecvIPPacketCallback(
+    const NewIPPacketCallback& callback) noexcept {
+  new_ip_pkt_callback_ = callback;
+}
+
+bool Client::Send(fptn::common::network::IPPacketPtr packet) const {
+  fptn::protocol::https::WebsocketClientSPtr ws;
+  try {
+    const std::unique_lock<std::mutex> lock(mutex_);  // mutex
+
+    if (ws_ && running_) {
+      ws = ws_;
+    }
+  } catch (const std::runtime_error& err) {
+    SPDLOG_ERROR("Send error: {}", err.what());
+  } catch (const std::exception& e) {
+    SPDLOG_ERROR("Exception occurred: {}", e.what());
+  }
+
+  if (!ws) {
+    return false;
+  }
+
+  return ws->Send(std::move(packet));
+}
+
+void Client::Run() {
+  // Time window for counting attempts (1 minute)
+  constexpr auto kReconnectionWindow = std::chrono::seconds(60);
+  // Delay between reconnection attempts
+  constexpr auto kReconnectionDelay = std::chrono::milliseconds(300);
+
+  // Current count of reconnection attempts
+  reconnection_attempts_ = kMaxReconnectionAttempts_;
+  auto window_start_time = std::chrono::steady_clock::now();
+
+  while (running_ && reconnection_attempts_ > 0) {
+    fptn::protocol::https::WebsocketClientSPtr ws;
+    {
+      const std::unique_lock<std::mutex> lock(mutex_);  // mutex
+
+      // cppcheck-suppress identicalInnerCondition
+      if (running_) {  // Double-check after acquiring lock
+        ws_ = std::make_shared<fptn::protocol::https::WebsocketClient>(
+            server_ip_, server_port_, tun_interface_address_ipv4_,
+            tun_interface_address_ipv6_, new_ip_pkt_callback_, sni_,
+            access_token_, md5_fingerprint_, censorship_strategy_, nullptr, 32);
+        ws = ws_;
+      }
+    }
+
+    if (running_ && ws) {
+      ws->Run();  // Start the WebSocket client
+    }
+
+    if (!running_) {
+      break;
+    }
+
+    // clean
+    {
+      const std::unique_lock<std::mutex> lock(mutex_);  // mutex
+
+      // cppcheck-suppress knownConditionTrueFalse
+      if (ws_ && running_) {
+        ws = std::move(ws_);
+      }
+    }
+
+    if (ws) {
+      ws->Stop();
+    }
+
+    // Calculate time since last window start
+    const auto current_time = std::chrono::steady_clock::now();
+    const auto elapsed = current_time - window_start_time;
+
+    // Reconnection attempt counting logic
+    if (elapsed >= kReconnectionWindow) {
+      // Reset counter if we're past the time window
+      SPDLOG_INFO("Reconnection window reset. New attempt window started");
+      reconnection_attempts_ = kMaxReconnectionAttempts_;
+      window_start_time = current_time;
+    }
+    if (reconnection_attempts_ > 0) {
+      --reconnection_attempts_;
+    }
+    // Log connection failure and wait before retrying
+    SPDLOG_ERROR(
+        "Connection closed (attempt {}/{} in current window). Reconnecting in "
+        "{}ms...",
+        kMaxReconnectionAttempts_ - reconnection_attempts_,
+        kMaxReconnectionAttempts_, kReconnectionDelay.count());
+
+    std::this_thread::sleep_for(kReconnectionDelay);
+  }
+
+  if (running_ && !reconnection_attempts_) {
+    SPDLOG_ERROR("Connection failure: Could not establish connection");
+  }
+}
+
+bool Client::Start() {
+  running_ = true;
+  th_ = std::thread(&Client::Run, this);
+  return th_.joinable();
+}
+
+bool Client::Stop() {
+  if (!running_) {
+    return false;
+  }
+
+  fptn::protocol::https::WebsocketClientSPtr ws;
+
+  SPDLOG_INFO("Stopping client");
+  {
+    const std::unique_lock<std::mutex> lock(mutex_);  // mutex
+
+    if (!running_) {  // Double-check after acquiring lock
+      return false;
+    }
+    running_ = false;
+    ws = std::move(ws_);
+  }
+
+  if (ws) {
+    ws->Stop();
+  }
+
+  if (th_.joinable()) {
+    try {
+      th_.join();
+    } catch (...) {
+      SPDLOG_WARN("Unexpected exception during thread join");
+    }
+  }
+  return true;
+}
+
+bool Client::IsStarted() const {
+  return running_ && reconnection_attempts_ > 0;
+}
+
+const std::string& Client::LatestError() const { return latest_error_; }
