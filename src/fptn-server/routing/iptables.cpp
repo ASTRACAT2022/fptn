@@ -6,6 +6,12 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 
 #include "routing/iptables.h"
 
+#ifdef __linux__
+#include <cerrno>
+#include <cstring>
+#include <sys/resource.h>  // NOLINT(build/include_order)
+#endif
+
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,7 +23,7 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <fmt/format.h>     // NOLINT(build/include_order)
 #include <spdlog/spdlog.h>  // NOLINT(build/include_order)
 
-using fptn::routing::IPTables;
+using fptn::routing::RouteManager;
 
 namespace {
 bool RunCommand(const std::string& command) noexcept {
@@ -30,22 +36,58 @@ bool RunCommand(const std::string& command) noexcept {
       return true;
     }
   } catch (const std::exception& e) {
-    SPDLOG_ERROR("IPTables error: {}", e.what());
+    SPDLOG_WARN("IPTables warning: {}", e.what());
   } catch (...) {
-    SPDLOG_ERROR("Undefined error");
+    SPDLOG_WARN("Undefined warning");
   }
   return false;
 }
 
+#ifdef __linux__
+bool SetMaxFileDescriptors() {
+  struct rlimit current_limits = {};
+  if (getrlimit(RLIMIT_NOFILE, &current_limits) != 0) {
+    SPDLOG_WARN(
+        "Failed to get current file descriptor limits: {}", strerror(errno));
+    return false;
+  }
+
+  SPDLOG_INFO("Current file descriptor limits: soft={}, hard={}",
+      current_limits.rlim_cur, current_limits.rlim_max);
+
+  struct rlimit new_limits = {};
+  new_limits.rlim_cur = current_limits.rlim_max;
+  new_limits.rlim_max = current_limits.rlim_max;
+
+  // Try to set the new limits
+  if (setrlimit(RLIMIT_NOFILE, &new_limits) != 0) {
+    SPDLOG_WARN("Failed to set file descriptor limits: {}", strerror(errno));
+    return false;
+  }
+
+  // Verify the changes were applied
+  struct rlimit verified_limits;
+  if (getrlimit(RLIMIT_NOFILE, &verified_limits) != 0) {
+    SPDLOG_WARN(
+        "Failed to verify new file descriptor limits: {}", strerror(errno));
+    return false;
+  }
+
+  SPDLOG_INFO("New file descriptor limits: soft={}, hard={}",
+      verified_limits.rlim_cur, verified_limits.rlim_max);
+  return true;
+}
+#endif
+
 }  // namespace
 
-IPTables::IPTables(
+RouteManager::RouteManager(
     std::string out_net_interface_name, std::string tun_net_interface_name)
     : out_net_interface_name_(std::move(out_net_interface_name)),
       tun_net_interface_name_(std::move(tun_net_interface_name)),
       running_(false) {}
 
-IPTables::~IPTables() {
+RouteManager::~RouteManager() {
   try {
     Clean();
   } catch (const std::exception& ex) {
@@ -55,8 +97,12 @@ IPTables::~IPTables() {
   }
 }
 
-bool IPTables::Apply() {  // NOLINT(bugprone-exception-escape)
+bool RouteManager::Apply() {  // NOLINT(bugprone-exception-escape)
   const std::unique_lock<std::mutex> lock(mutex_);  // mutex
+
+#ifdef __linux__
+  SetMaxFileDescriptors();
+#endif
 
   running_ = true;
 #ifdef __linux__
@@ -118,7 +164,7 @@ bool IPTables::Apply() {  // NOLINT(bugprone-exception-escape)
 }
 
 // NOLINT(bugprone-exception-escape)
-bool IPTables::Clean() {
+bool RouteManager::Clean() {
   const std::unique_lock<std::mutex> lock(mutex_);  // mutex
 
   if (!running_) {

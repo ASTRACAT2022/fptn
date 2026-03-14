@@ -24,8 +24,8 @@
     <link data-rh="true" rel="icon" type="image/png" href="https://batchar2.github.io/fptn/images/favicon-32x32.png" sizes="32x32"/>
     <link data-rh="true" rel="image_src" href="https://batchar2.github.io/fptn/images/fptn.png"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="google-site-verification" content="qRfNERF2jjd5LY_SUHnzFpQaoi85z8SrUrH4FDPteig" />
-    <meta name="yandex-verification" content="45a56e6c5ca1504b" />
+    <meta name="google-site-verification" content="XMBHObrFKkhfBziTXGfeqi27fZaRHBTGx76IkN8dCos" />
+    <meta name="yandex-verification" content="f8c4f9389ec28dc1" />
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
@@ -205,6 +205,17 @@
             align-items: center;
             justify-content: center;
         }
+        .right-flex {
+            display: flex;
+            align-items: center;
+        }
+        .right-flex {
+            display: flex;
+            align-items: center;
+        }
+        .right-flex > * {
+            justify-content: flex-end;
+        }
         .top-margin {
             margin-top: 32px;
         }
@@ -269,6 +280,7 @@
         .info {
             display: flex;
             align-items: center;
+            justify-content: flex-end;
         }
 
         .swiper-slide {
@@ -320,7 +332,7 @@
                     FPTN Project
                 </a>
             </div>
-            <div class="col lang center-flex col-lg-1">
+            <div class="col lang right-flex col-lg-1">
                 <div class="collapse navbar-collapse show" id="navbarNavDarkDropdown">
                     <ul class="navbar-nav">
                         <li class="nav-item dropdown">
@@ -333,25 +345,23 @@
                     </ul>
                 </div>
             </div>
-            <div class="col info col-lg-1 center-flex" onclick="window.open('https://github.com/batchar2/fptn', '_blank').focus()">
+            <div class="col info col-lg-2" >
                 <a class="navbar-brand" href="https://github.com/batchar2/fptn" target="_blank">
-                    Github
                     <svg class="gth-svg" height="32" aria-hidden="true" viewBox="0 0 24 24" width="32" data-view-component="true" class="octicon octicon-mark-github">
                         <path d="M12.5.75C6.146.75 1 5.896 1 12.25c0 5.089 3.292 9.387 7.863 10.91.575.101.79-.244.79-.546 0-.273-.014-1.178-.014-2.142-2.889.532-3.636-.704-3.866-1.35-.13-.331-.69-1.352-1.18-1.625-.402-.216-.977-.748-.014-.762.906-.014 1.553.834 1.769 1.179 1.035 1.74 2.688 1.25 3.349.948.1-.747.402-1.25.733-1.538-2.559-.287-5.232-1.279-5.232-5.678 0-1.25.445-2.285 1.178-3.09-.115-.288-.517-1.467.115-3.048 0 0 .963-.302 3.163 1.179.92-.259 1.897-.388 2.875-.388.977 0 1.955.13 2.875.388 2.2-1.495 3.162-1.179 3.162-1.179.633 1.581.23 2.76.115 3.048.733.805 1.179 1.825 1.179 3.09 0 4.413-2.688 5.39-5.247 5.678.417.36.776 1.05.776 2.128 0 1.538-.014 2.774-.014 3.162 0 .302.216.662.79.547C20.709 21.637 24 17.324 24 12.25 24 5.896 18.854.75 12.5.75Z"></path>
                     </svg>
                 </a>
-            </div>
-            <div class="col info col-lg-2 center-flex" onclick="window.open('https://t.me/fptn_project', '_blank').focus()">
                 <a class="navbar-brand" href="https://t.me/fptn_project" target="_blank">
-                    <span class="language-ru">Наш Telegram</span>
-                    <span class="language-en">Our Telegram</span>
                     <svg style="fill: white; height: 32px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512">
                         <path d="m248 8c-137 0-248 111-248 248s111 248 248 248 248-111 248-248-111-248-248-248zm121.8 169.9-40.7 191.8c-3 13.6-11.1 16.9-22.4 10.5l-62-45.7-29.9 28.8c-3.3 3.3-6.1 6.1-12.5 6.1l4.4-63.1 114.9-103.8c5-4.4-1.1-6.9-7.7-2.5l-142 89.4-61.2-19.1c-13.3-4.2-13.6-13.3 2.8-19.7l239.1-92.2c11.1-4 20.8 2.7 17.2 19.5z"/>
                     </svg>
                 </a>
+                <a class="navbar-brand" href="https://boosty.to/fptn" target="_blank">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 235.6 292.2" width="32" height="32" aria-hidden="true" role="img" style="fill: white;" >
+                        <path fill="currentColor" d="M44.3 164.5L76.9 51.6H127l-10.1 35c-.1.2-.2.4-.3.6L90 179.6h24.8c-10.4 25.9-18.5 46.2-24.3 60.9-45.8-.5-58.6-33.3-47.4-72.1M90.7 240.6l60.4-86.9h-25.6l22.3-55.7c38.2 4 56.2 34.1 45.6 70.5-11.3 39.1-57.1 72.1-101.7 72.1h-.6z"/>
+                    </svg>
+                </a>
             </div>
-
-
         </div>
     </nav>
 </header>
@@ -379,7 +389,8 @@
                     <br>
 
                     <p>
-                        FPTN is a non-commercial VPN, a volunteer project for bypassing censorship.
+                        FPTN is a fully custom-built VPN technology — developed from scratch, including the core protocol, server implementation, and cross-platform clients.
+                        It is a non-commercial, open-source project developed by volunteers and designed to bypass censorship.
                     </p>
 
                     <p>
@@ -413,7 +424,8 @@
                     </br>
 
                     <p>
-                        FPTN — это некоммерческий VPN, волонтерский проект для обхода цензуры.
+                        FPTN — это полностью разработанная с нуля технология VPN, включая собственный протокол, сервер и кроссплатформенные клиенты.
+                        Это некоммерческий проект с открытым исходным кодом, развиваемый волонтерами и предназначенный для обхода цензуры.
                     </p>
 
                     <p>
@@ -569,16 +581,6 @@
                             <div class="dropdown">
                                 <a class="dropdown-button download_2 language-ru" onclick="downloadUrl('macos_m')">Скачать</a>
                                 <a class="dropdown-button download_2 language-en" onclick="downloadUrl('macos_m')">Download</a>
-                            </div>
-                        </div>
-                        <div class="item">
-                            <p>
-                                <span class="language-en">MacOS client (Intel)</span>
-                                <span class="language-ru">Клиент для MacOS (Intel)</span>
-                            </p>
-                            <div class="dropdown">
-                                <a class="dropdown-button download_2 language-ru" onclick="downloadUrl('macos_intel')">Скачать</a>
-                                <a class="dropdown-button download_2 language-en" onclick="downloadUrl('macos_intel')">Download</a>
                             </div>
                         </div>
                     </div>
@@ -1029,7 +1031,7 @@
                 url = `https://github.com/${owner}/${repo}/releases/latest`
                 break;
             case 'android_apk':
-                url = `https://storage.fptn.org/fptn-client.apk`
+                url = `https://storage.googleapis.com/fptn.org/APK/fptn-client.apk`
                 break;
             case 'google_play':
                 url = `https://play.google.com/store/apps/details?id=org.fptn.vpn`

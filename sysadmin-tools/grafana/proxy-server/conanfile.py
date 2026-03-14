@@ -5,16 +5,17 @@ from conan import ConanFile
 from conan.tools.cmake import CMakeToolchain, CMake
 from conan.tools.files import copy
 
+
 class ProxyServer(ConanFile):
     version = "0.0.1"
     requires = (
         "zlib/1.3.1",
-        "boost/1.88.0",
-        "fmt/11.2.0",
-        "abseil/20250512.1",
+        "boost/1.90.0",
+        "fmt/12.1.0",
+        "abseil/20250814.1",
         "argparse/3.2",
-        "cpp-httplib/0.20.1",
-        "spdlog/1.15.3",
+        "cpp-httplib/0.30.0",
+        "spdlog/1.17.0",
         "protobuf/5.29.3",
         "nlohmann_json/3.12.0",
     )
@@ -89,7 +90,7 @@ class ProxyServer(ConanFile):
         self.build_requires("cmake/3.22.0", override=True)
         self.test_requires("gtest/1.17.0")
         if self.settings.os != "Windows":
-            self.build_requires("meson/1.8.2", override=True)
+            self.build_requires("meson/1.10.0", override=True)
 
     def generate(self):
         tc = CMakeToolchain(self)
@@ -105,9 +106,7 @@ class ProxyServer(ConanFile):
         if self.settings.os == "Windows":
             self.options.rm_safe("fPIC")
 
-    def _register_local_recipe(
-            self, recipe, name, version, override=False, force=False
-    ):
+    def _register_local_recipe(self, recipe, name, version, override=False, force=False):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         recipe_rel_path = os.path.join(script_dir, ".conan", "recipes", recipe)
         subprocess.run(

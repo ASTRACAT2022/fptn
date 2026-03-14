@@ -7,10 +7,16 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include "gui/settingsmodel/settingsmodel.h"
 
 #if _WIN32
+#include <Windows.h>   // NOLINT(build/include_order)
 #include <Ws2tcpip.h>  // NOLINT(build/include_order)
-#include <windows.h>   // NOLINT(build/include_order)
+#include <shlobj.h>    // NOLINT(build/include_order)
+#elif defined(__linux__)
+#include <linux/limits.h>  // NOLINT(build/include_order)
+#include <unistd.h>        // NOLINT(build/include_order)
 #endif
 
+#include <memory>
+#include <string>
 #include <utility>
 
 #include <boost/asio.hpp>
@@ -24,7 +30,8 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <QNetworkInterface>  // NOLINT(build/include_order)
 #include <QStandardPaths>     // NOLINT(build/include_order)
 
-#include "routing//iptables.h"
+#include "routing//route_manager.h"
+#include "utils/brotli/brotli.h"
 
 using fptn::gui::ServerConfig;
 using fptn::gui::ServiceConfig;
@@ -48,6 +55,23 @@ QVector<ServerConfig> ParseServers(const QJsonArray& servers_array) {
   }
   return servers;
 }
+
+QVector<QString> SplitStringToVector(const QString& str) {
+  QVector<QString> result;
+  if (str.isEmpty()) {
+    return result;
+  }
+  const auto parts = str.split(',', Qt::SkipEmptyParts);
+  for (const auto& part : parts) {
+    result.append(part.trimmed());
+  }
+  return result;
+}
+
+QString JoinVectorToString(const QVector<QString>& vec) {
+  return vec.join(',');
+}
+
 };  // namespace
 
 SettingsModel::SettingsModel(const QMap<QString, QString>& languages,
@@ -57,12 +81,52 @@ SettingsModel::SettingsModel(const QMap<QString, QString>& languages,
       languages_(languages),
       default_language_(default_language),
       selected_language_(default_language),
-      client_autostart_(false) {
+#if _WIN32
+      enable_advanced_dns_management_(false),
+#endif
+      client_autostart_(false),
+      enable_split_tunnel_(false) {
+#if _WIN32
+  wchar_t exe_path[MAX_PATH] = {};
+  if (GetModuleFileNameW(nullptr, exe_path, MAX_PATH) != 0) {
+    std::filesystem::path exe_dir =
+        std::filesystem::path(exe_path).parent_path();
+    std::string sni_folder = (exe_dir / "SNI").string();
+    sni_manager_ = std::make_shared<SNIManager>(sni_folder);
+  } else {
+    const auto settings_folder = GetSettingsFolderPath();
+    const std::string sni_folder = settings_folder.toStdString() + "/" + "SNI";
+    sni_manager_ = std::make_shared<SNIManager>(sni_folder);
+  }
+#elif __linux__
+  char exe_path[PATH_MAX] = {};
+  ssize_t count = readlink("/proc/self/exe", exe_path, PATH_MAX);
+  if (count != -1) {
+    exe_path[count] = '\0';
+    std::filesystem::path exe_dir =
+        std::filesystem::path(exe_path).parent_path();
+    std::string sni_folder = (exe_dir / "SNI").string();
+    sni_manager_ = std::make_shared<SNIManager>(sni_folder);
+  } else {
+    const auto settings_folder = GetSettingsFolderPath();
+    const std::string sni_folder = settings_folder.toStdString() + "/" + "SNI";
+    sni_manager_ = std::make_shared<SNIManager>(sni_folder);
+  }
+#else
+  const auto settings_folder = GetSettingsFolderPath();
+  const std::string sni_folder = settings_folder.toStdString() + "/" + "SNI";
+  sni_manager_ = std::make_shared<SNIManager>(sni_folder);
+#endif
   Load(true);
 }
 
+QString SettingsModel::GetSettingsFilePath() const {
+  const QString directory = GetSettingsFolderPath();
+  return directory + "/fptn-settings-4.json";
+}
+
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-QString SettingsModel::GetFilePath() const {
+QString SettingsModel::GetSettingsFolderPath() const {
 #ifdef __APPLE__
   const QString directory =
       QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
@@ -74,20 +138,18 @@ QString SettingsModel::GetFilePath() const {
   if (!dir.exists()) {
     dir.mkpath(directory);
   }
-  return directory + "/fptn-settings.json";
+  return directory;
 }
 
 void SettingsModel::Load(bool dont_load_server) {
-  // Load servers
   services_.clear();
 
-  const QString file_path = GetFilePath();
+  const QString file_path = GetSettingsFilePath();
   QFile file(file_path);
   if (!file.open(QIODevice::ReadOnly)) {
     SPDLOG_WARN("Failed to open file for reading: {}", file_path.toStdString());
     return;
   }
-  SPDLOG_INFO("Settings: {}", file_path.toStdString());
 
   const QByteArray data = file.readAll();
   file.close();
@@ -104,7 +166,6 @@ void SettingsModel::Load(bool dont_load_server) {
       service.username = jsonservice_obj["username"].toString();
       service.password = jsonservice_obj["password"].toString();
 
-      // servers
       if (!dont_load_server) {
         service.servers = ParseServers(jsonservice_obj["servers"].toArray());
         if (jsonservice_obj.contains("censored_zone_servers")) {
@@ -115,7 +176,6 @@ void SettingsModel::Load(bool dont_load_server) {
       services_.push_back(service);
     }
   }
-  // Load network settings
   if (service_obj.contains("network_interface")) {
     network_interface_ = service_obj["network_interface"].toString();
   }
@@ -130,6 +190,13 @@ void SettingsModel::Load(bool dont_load_server) {
     client_autostart_ = service_obj["autostart"].toBool();
   }
 
+#if _WIN32
+  if (service_obj.contains("enable_advanced_dns_management")) {
+    enable_advanced_dns_management_ =
+        service_obj["enable_advanced_dns_management"].toBool();
+  }
+#endif
+
   if (service_obj.contains("gateway_ip")) {
     gateway_ip_ = service_obj["gateway_ip"].toString();
   }
@@ -142,6 +209,60 @@ void SettingsModel::Load(bool dont_load_server) {
   }
   if (sni_.isEmpty()) {
     sni_ = FPTN_DEFAULT_SNI;
+  }
+
+  if (service_obj.contains("bypass_method")) {
+    bypass_method_ = service_obj["bypass_method"].toString();
+  }
+  if (bypass_method_.isEmpty() ||
+      (bypass_method_ != kBypassMethodSni &&
+          bypass_method_ != kBypassMethodObfuscation &&
+          bypass_method_ != kBypassMethodSniReality)) {
+    bypass_method_ = kBypassMethodSni;
+  }
+
+  if (service_obj.contains("blacklist_domains")) {
+    blacklist_domains_ = service_obj["blacklist_domains"].toString();
+  }
+  if (blacklist_domains_.isEmpty()) {
+    blacklist_domains_ =
+        "domain:solovev-live.ru,domain:ria.ru,domain:tass.ru,domain:1tv.ru,"
+        "domain:ntv.ru,domain:rt.com";
+  }
+
+  if (service_obj.contains("exclude_tunnel_networks")) {
+    exclude_tunnel_networks_ =
+        service_obj["exclude_tunnel_networks"].toString();
+  }
+  if (exclude_tunnel_networks_.isEmpty()) {
+    exclude_tunnel_networks_ = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+  }
+
+  if (service_obj.contains("include_tunnel_networks")) {
+    include_tunnel_networks_ =
+        service_obj["include_tunnel_networks"].toString();
+  }
+
+  if (service_obj.contains("enable_split_tunnel")) {
+    enable_split_tunnel_ = service_obj["enable_split_tunnel"].toBool();
+  }
+
+  if (service_obj.contains("split_tunnel_mode")) {
+    split_tunnel_mode_ = service_obj["split_tunnel_mode"].toString();
+  }
+  if (split_tunnel_mode_.isEmpty() ||
+      (split_tunnel_mode_ != kSplitTunnelModeExclude &&
+          split_tunnel_mode_ != kSplitTunnelModeInclude)) {
+    split_tunnel_mode_ = kSplitTunnelModeExclude;
+  }
+
+  if (service_obj.contains("split_tunnel_domains")) {
+    split_tunnel_domains_ = service_obj["split_tunnel_domains"].toString();
+  }
+  if (split_tunnel_domains_.isEmpty()) {
+    split_tunnel_domains_ =
+        "domain:ru,domain:su,domain:рф,domain:vk.com,domain:yandex.com,"
+        "domain:userapi.com,domain:yandex.net,domain:clstorage.net";
   }
 }
 
@@ -189,12 +310,11 @@ QVector<QString> SettingsModel::GetLanguages() const {
 }
 
 bool SettingsModel::ExistsTranslation(const QString& language_code) const {
-  // NOLINTNEXTLINE(readability-container-contains)
-  return languages_.find(language_code) != languages_.end();
+  return languages_.contains(language_code);
 }
 
 bool SettingsModel::Save() {
-  QString file_path = GetFilePath();
+  QString file_path = GetSettingsFilePath();
   QFile file(file_path);
   if (!file.open(QIODevice::WriteOnly)) {
     SPDLOG_ERROR(
@@ -210,7 +330,6 @@ bool SettingsModel::Save() {
     service_obj["username"] = service.username;
     service_obj["password"] = service.password;
 
-    // servers
     QJsonArray servers_array;
     for (const auto& server : service.servers) {
       QJsonObject server_obj;
@@ -223,7 +342,6 @@ bool SettingsModel::Save() {
     }
     service_obj["servers"] = servers_array;
 
-    // censored_zone_servers
     QJsonArray censored_zone_servers;
     for (const auto& server : service.censored_zone_servers) {
       QJsonObject server_obj;
@@ -244,17 +362,24 @@ bool SettingsModel::Save() {
   json_object["gateway_ip"] = gateway_ip_;
   json_object["autostart"] = client_autostart_ ? 1 : 0;
   json_object["sni"] = sni_;
+  json_object["bypass_method"] = bypass_method_;
+
+#if _WIN32
+  json_object["enable_advanced_dns_management"] =
+      enable_advanced_dns_management_;
+#endif
+
+  json_object["blacklist_domains"] = blacklist_domains_;
+  json_object["exclude_tunnel_networks"] = exclude_tunnel_networks_;
+  json_object["include_tunnel_networks"] = include_tunnel_networks_;
+  json_object["enable_split_tunnel"] = enable_split_tunnel_;
+  json_object["split_tunnel_mode"] = split_tunnel_mode_;
+  json_object["split_tunnel_domains"] = split_tunnel_domains_;
+
   QJsonDocument document(json_object);
   auto len = file.write(document.toJson());
   file.close();
 
-  if (len > 0) {
-    SPDLOG_INFO("Success save: {}", file_path.toStdString());
-  }
-  // load saved data
-  Load();
-
-  // send signal
   emit dataChanged();
 
   return len > 0;
@@ -282,7 +407,6 @@ ServiceConfig SettingsModel::ParseToken(const QString& token) {
   service.username = json_object["username"].toString();
   service.password = json_object["password"].toString();
 
-  // servers
   service.servers = ParseServers(json_object["servers"].toArray());
   if (json_object.contains("censored_zone_servers")) {
     service.censored_zone_servers =
@@ -343,20 +467,16 @@ void SettingsModel::Clear() { services_.clear(); }
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 QVector<QString> SettingsModel::GetNetworkInterfaces() const {
   QVector<QString> interfaces;
-  interfaces.append("auto");  // default empty
+  interfaces.append("auto");
 
   QList<QNetworkInterface> network_interfaces =
       QNetworkInterface::allInterfaces();
 
   for (const QNetworkInterface& network_interface : network_interfaces) {
-    if (network_interface.flags().testFlag(QNetworkInterface::IsUp) &&
-        !network_interface.flags().testFlag(QNetworkInterface::IsLoopBack) &&
-        !network_interface.flags().testFlag(
-            QNetworkInterface::IsPointToPoint) &&
-        !network_interface.hardwareAddress().isEmpty()) {
-      QList<QNetworkAddressEntry> entries = network_interface.addressEntries();
-      if (!entries.isEmpty()) {
-        interfaces.append(network_interface.humanReadableName());
+    if (!network_interface.flags().testFlag(QNetworkInterface::IsLoopBack)) {
+      const QString iface_name = network_interface.humanReadableName();
+      if (!iface_name.isEmpty()) {
+        interfaces.append(iface_name);
       }
     }
   }
@@ -371,3 +491,87 @@ int SettingsModel::GetExistServiceIndex(const QString& name) const {
   }
   return -1;
 }
+
+QString SettingsModel::BypassMethod() const {
+  return bypass_method_.isEmpty() ? kBypassMethodSni : bypass_method_;
+}
+
+void SettingsModel::SetBypassMethod(const QString& method) {
+  bypass_method_ = method;
+  Save();
+}
+
+fptn::gui::SNIManagerSPtr SettingsModel::SniManager() const {
+  return sni_manager_;
+}
+
+QVector<QString> SettingsModel::BlacklistDomains() const {
+  if (blacklist_domains_.isEmpty()) {
+    return SplitStringToVector(FPTN_CLIENT_DEFAULT_BLACKLIST_DOMAINS);
+  }
+  return SplitStringToVector(blacklist_domains_);
+}
+
+void SettingsModel::SetBlacklistDomains(const QVector<QString>& domains) {
+  blacklist_domains_ = JoinVectorToString(domains);
+  Save();
+}
+
+QVector<QString> SettingsModel::ExcludeTunnelNetworks() const {
+  if (exclude_tunnel_networks_.isEmpty()) {
+    return SplitStringToVector(FPTN_CLIENT_DEFAULT_EXCLUDE_NETWORKS);
+  }
+  return SplitStringToVector(exclude_tunnel_networks_);
+}
+
+void SettingsModel::SetExcludeTunnelNetworks(const QVector<QString>& networks) {
+  exclude_tunnel_networks_ = JoinVectorToString(networks);
+  Save();
+}
+
+QVector<QString> SettingsModel::IncludeTunnelNetworks() const {
+  return SplitStringToVector(include_tunnel_networks_);
+}
+
+void SettingsModel::SetIncludeTunnelNetworks(const QVector<QString>& networks) {
+  include_tunnel_networks_ = JoinVectorToString(networks);
+  Save();
+}
+
+bool SettingsModel::EnableSplitTunnel() const { return enable_split_tunnel_; }
+
+void SettingsModel::SetEnableSplitTunnel(bool enable) {
+  enable_split_tunnel_ = enable;
+  Save();
+}
+
+QString SettingsModel::SplitTunnelMode() const {
+  return split_tunnel_mode_.isEmpty() ? kSplitTunnelModeExclude
+                                      : split_tunnel_mode_;
+}
+
+void SettingsModel::SetSplitTunnelMode(const QString& mode) {
+  split_tunnel_mode_ = mode;
+  Save();
+}
+
+QVector<QString> SettingsModel::SplitTunnelDomains() const {
+  if (split_tunnel_domains_.isEmpty()) {
+    return SplitStringToVector(FPTN_CLIENT_DEFAULT_SPLIT_TUNNEL_DOMAINS);
+  }
+  return SplitStringToVector(split_tunnel_domains_);
+}
+
+void SettingsModel::SetSplitTunnelDomains(const QVector<QString>& domains) {
+  split_tunnel_domains_ = JoinVectorToString(domains);
+  Save();
+}
+#if _WIN32
+bool SettingsModel::EnableAdvancedDnsManagement() const {
+  return enable_advanced_dns_management_;
+}
+
+void SettingsModel::SetEnableAdvancedDnsManagement(const bool enable) {
+  enable_advanced_dns_management_ = enable;
+}
+#endif

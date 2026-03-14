@@ -11,6 +11,7 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include <spdlog/spdlog.h>  // NOLINT(build/include_order)
 
@@ -23,12 +24,15 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <QStyleHints>       // NOLINT(build/include_order)
 #include <QtConcurrent>      // NOLINT(build/include_order)
 
+#include "common/network/ip_packet.h"
 #include "common/system/command.h"
 
+#include "fptn-protocol-lib/https/obfuscator/methods/tls/tls_obfuscator.h"
 #include "fptn-protocol-lib/time/time_provider.h"
 #include "gui/autoupdate/autoupdate.h"
 #include "gui/style/style.h"
 #include "gui/translations/translations.h"
+#include "plugins/blacklist/domain_blacklist.h"
 
 #ifdef _WIN32
 #include "utils/windows/vpn_conflict.h"
@@ -141,7 +145,7 @@ TrayApp::TrayApp(const SettingsModelPtr& settings, QObject* parent)
   connect(settings_.get(), &SettingsModel::dataChanged, this,
       &TrayApp::UpdateTrayMenu);
   connect(update_timer_, &QTimer::timeout, this, &TrayApp::handleTimer);
-  update_timer_->start(300);
+  update_timer_->start(1000);
 
   // Settings
   settings_action_ = new QAction(QObject::tr("Settings"), this);
@@ -178,8 +182,7 @@ TrayApp::TrayApp(const SettingsModelPtr& settings, QObject* parent)
   tray_icon_->show();
 
   // check update
-  update_version_future_ =
-      std::async(std::launch::async, fptn::gui::autoupdate::Check);
+  CheckForUpdatesAsync();
 
   try {
     settings_->Load(false);  // use this to show notification about change
@@ -203,6 +206,45 @@ TrayApp::TrayApp(const SettingsModelPtr& settings, QObject* parent)
     ShowWarning(QObject::tr("VPN Conflict Detected"), message);
   }
 #endif
+}
+
+void TrayApp::CheckForUpdatesAsync() {
+  (void)QtConcurrent::run([this]() {
+    try {
+      SPDLOG_DEBUG("Checking for updates in background thread");
+
+      const auto update_result = fptn::gui::autoupdate::Check();
+      const bool is_available = update_result.first;
+      const std::string version_name = update_result.second;
+
+      SPDLOG_INFO("Update check completed: available={}, version={}",
+          is_available, version_name);
+      if (is_available && !version_name.empty()) {
+        QMetaObject::invokeMethod(
+            this,
+            // NOLINTNEXTLINE(bugprone-exception-escape)
+            [this, version_name]() noexcept {
+              try {
+                auto_available_version_ = QString::fromStdString(version_name);
+                auto_update_action_->setText(
+                    QObject::tr("New version available") + " " +
+                    auto_available_version_);
+                auto_update_action_->setVisible(true);
+                RetranslateUi();
+              } catch (...) {
+                SPDLOG_WARN("Failed to update UI with new version info");
+              }
+            },
+            Qt::QueuedConnection);
+      } else {
+        SPDLOG_DEBUG("No updates available or version name is empty");
+      }
+    } catch (const std::exception& e) {
+      SPDLOG_WARN("Failed to check for updates: {}", e.what());
+    } catch (...) {
+      SPDLOG_WARN("Unknown error during update check");
+    }
+  });
 }
 
 void TrayApp::UpdateTrayMenu() {
@@ -251,7 +293,7 @@ void TrayApp::UpdateTrayMenu() {
             connect(
                 server_connect, &QAction::triggered, [this, server, service]() {
                   smart_connect_ = false;
-                  fptn::protocol::server::ServerInfo cfg_server;
+                  fptn::utils::speed_estimator::ServerInfo cfg_server;
                   {
                     cfg_server.name = server.name.toStdString();
                     cfg_server.host = server.host.toStdString();
@@ -284,7 +326,7 @@ void TrayApp::UpdateTrayMenu() {
             connect(
                 server_connect, &QAction::triggered, [this, server, service]() {
                   smart_connect_ = false;
-                  fptn::protocol::server::ServerInfo cfg_server;
+                  fptn::utils::speed_estimator::ServerInfo cfg_server;
                   {
                     cfg_server.name = server.name.toStdString();
                     cfg_server.host = server.host.toStdString();
@@ -438,9 +480,9 @@ void TrayApp::onDisconnectFromServer() {
     vpn_client_->Stop();
     vpn_client_.reset();
   }
-  if (ip_tables_) {
-    ip_tables_->Clean();
-    ip_tables_.reset();
+  if (route_manager_) {
+    route_manager_->Clean();
+    route_manager_.reset();
   }
   UpdateTrayMenu();
 }
@@ -461,9 +503,9 @@ void TrayApp::handleDefaultState() {
       vpn_client_->Stop();
       vpn_client_.reset();
     }
-    if (ip_tables_) {
-      ip_tables_->Clean();
-      ip_tables_.reset();
+    if (route_manager_) {
+      route_manager_->Clean();
+      route_manager_.reset();
     }
   }
   UpdateTrayMenu();
@@ -524,15 +566,28 @@ void TrayApp::handleDisconnecting() {
 }
 
 void TrayApp::handleTimer() {
+  static bool reconnection_in_progress = false;
+  static auto last_reconnection_time = std::chrono::steady_clock::now();
+
   // check connection state
   bool is_disconnected = false;
-  if (connection_state_ == ConnectionState::Connected) {
+  if (connection_state_ == ConnectionState::Connected && vpn_client_) {
     const std::unique_lock<std::mutex> lock(mutex_);  // mutex
 
+    // cppcheck-suppress identicalConditionAfterEarlyExit
     if (connection_state_ == ConnectionState::Connected && vpn_client_) {
       if (!vpn_client_->IsStarted()) {
-        // client was disconnected
-        is_disconnected = true;
+        // check reconnection
+        auto now = std::chrono::steady_clock::now();
+        auto time_since_last = std::chrono::duration_cast<std::chrono::seconds>(
+            now - last_reconnection_time);
+
+        if (!reconnection_in_progress &&
+            time_since_last > std::chrono::seconds(3)) {
+          reconnection_in_progress = true;
+          last_reconnection_time = now;
+          is_disconnected = true;
+        }
       } else if (speed_widget_) {
         speed_widget_->UpdateSpeed(
             vpn_client_->GetReceiveRate(), vpn_client_->GetSendRate());
@@ -544,19 +599,8 @@ void TrayApp::handleTimer() {
     // show error
     ShowError(QObject::tr("FPTN Connection Error"),
         QObject::tr("The VPN connection was unexpectedly closed."));
+    SPDLOG_INFO("FPTN Connection Error");
     emit disconnecting();
-  }
-
-  // show update message
-  if (update_version_future_.valid()) {
-    const auto update_result = update_version_future_.get();
-    const bool is_new_version = update_result.first;
-    const std::string version_name = update_result.second;
-    if (is_new_version) {
-      auto_available_version_ = QString::fromStdString(version_name);
-      auto_update_action_->setVisible(true);
-      RetranslateUi();
-    }
   }
 }
 
@@ -615,13 +659,14 @@ void TrayApp::RetranslateUi() {
 }
 
 void TrayApp::stop() {
+  SPDLOG_INFO("Stopping TrayApp");
   if (vpn_client_) {
     vpn_client_->Stop();
     vpn_client_.reset();
   }
-  if (ip_tables_) {
-    ip_tables_->Clean();
-    ip_tables_.reset();
+  if (route_manager_) {
+    route_manager_->Clean();
+    route_manager_.reset();
   }
 }
 
@@ -645,22 +690,21 @@ bool TrayApp::startVpn(QString& err_msg) {
 
   const std::unique_lock<std::mutex> lock(mutex_);  // mutex
 
-  // Synchronize VPN client time with NTP servers
-  fptn::time::TimeProvider::Instance()->SyncWithNtp();
-
-  const pcpp::IPv4Address tun_interface_address_ipv4(
+  const fptn::common::network::IPv4Address tun_interface_address_ipv4(
       FPTN_CLIENT_DEFAULT_ADDRESS_IP4);
-  const pcpp::IPv6Address tun_interface_address_ipv6(
+  const fptn::common::network::IPv6Address tun_interface_address_ipv6(
       FPTN_CLIENT_DEFAULT_ADDRESS_IP6);
   const std::string tun_interface_name = "tun0";
 
   /* check gateway address */
-  const auto gateway_ip =
-      (settings_->GatewayIp() == "auto"
-              ? fptn::routing::GetDefaultGatewayIPAddress()
-              : pcpp::IPv4Address(settings_->GatewayIp().toStdString()));
+  const auto gateway_ip = (settings_->GatewayIp() == "auto"
+                               ? fptn::routing::GetDefaultGatewayIPAddress()
+                               : fptn::common::network::IPv4Address(
+                                     settings_->GatewayIp().toStdString()));
 
-  if (gateway_ip == pcpp::IPv4Address()) {
+  const auto gateway_ipv6 = fptn::routing::GetDefaultGatewayIPv6Address();
+
+  if (gateway_ip.IsEmpty()) {
     err_msg = QObject::tr(
         "Unable to find the default gateway IP address. "
         "Please check your connection and make sure no other VPN "
@@ -682,11 +726,24 @@ bool TrayApp::startVpn(QString& err_msg) {
   const std::string sni = !settings_->SNI().isEmpty()
                               ? settings_->SNI().toStdString()
                               : FPTN_DEFAULT_SNI;
-  fptn::config::ConfigFile config(sni);  // SET SNI
-  if (smart_connect_) {                  // find the best server
+  fptn::protocol::https::CensorshipStrategy censorship_strategy =
+      fptn::protocol::https::CensorshipStrategy::kSni;
+  if (settings_->BypassMethod() == "OBFUSCATION") {
+    SPDLOG_INFO("Using obfuscation to bypass censorship");
+    censorship_strategy =
+        fptn::protocol::https::CensorshipStrategy::kTlsObfuscator;
+  } else if (settings_->BypassMethod() == "SNI-REALITY") {
+    SPDLOG_INFO("Using reality mode to bypass censorship");
+    censorship_strategy =
+        fptn::protocol::https::CensorshipStrategy::kSniRealityMode;
+  } else {
+    SPDLOG_INFO("Using SNI spoofing to bypass censorship");
+  }
+  fptn::config::ConfigFile config(sni, censorship_strategy);  // SET SNI
+  if (smart_connect_) {  // find the best server
     for (const auto& service : settings_->Services()) {
       for (const auto& s : service.servers) {
-        fptn::protocol::server::ServerInfo cfg_server;
+        fptn::utils::speed_estimator::ServerInfo cfg_server;
         {
           cfg_server.name = s.name.toStdString();
           cfg_server.host = s.host.toStdString();
@@ -701,7 +758,7 @@ bool TrayApp::startVpn(QString& err_msg) {
       }
     }
     try {
-      selected_server_ = config.FindFastestServer();
+      selected_server_ = config.FindFastestServer(30);
     } catch (std::runtime_error& err) {
       err_msg = QObject::tr("Config error: ") + err.what();
       return false;
@@ -709,7 +766,7 @@ bool TrayApp::startVpn(QString& err_msg) {
   } else {
     // check connection to selected server
     const std::uint64_t time = config.GetDownloadTimeMs(
-        selected_server_, sni, 5, selected_server_.md5_fingerprint);
+        selected_server_, sni, 30, selected_server_.md5_fingerprint);
     if (time == UINT64_MAX) {
       err_msg = QString(
           QObject::tr("The server is unavailable. Please select another server "
@@ -720,15 +777,16 @@ bool TrayApp::startVpn(QString& err_msg) {
   }
 
   const auto server_ip = fptn::routing::ResolveDomain(selected_server_.host);
-  if (server_ip == pcpp::IPv4Address()) {
+  if (server_ip == fptn::common::network::IPv4Address()) {
     err_msg = QString(QObject::tr("DNS resolution error") + ": %1")
                   .arg(QString::fromStdString(selected_server_.host));
     return false;
   }
 
-  auto http_client = std::make_unique<fptn::http::Client>(server_ip,
+  auto http_client = std::make_unique<fptn::vpn::http::Client>(server_ip,
       selected_server_.port, tun_interface_address_ipv4,
-      tun_interface_address_ipv6, sni, selected_server_.md5_fingerprint);
+      tun_interface_address_ipv6, sni, selected_server_.md5_fingerprint,
+      censorship_strategy);
   // login
   bool login_status =
       http_client->Login(selected_server_.username, selected_server_.password);
@@ -745,18 +803,56 @@ bool TrayApp::startVpn(QString& err_msg) {
 
   // get dns
   const auto [dns_server_ipv4, dns_server_ipv6] = http_client->GetDns();
-  if (dns_server_ipv4 == pcpp::IPv4Address() ||
-      dns_server_ipv6 == pcpp::IPv6Address()) {
+  if (dns_server_ipv4.IsEmpty() || dns_server_ipv6.IsEmpty()) {
     const std::string error = http_client->LatestError();
     err_msg = QObject::tr("DNS server error! Check your connection!") + "\n\n" +
               QObject::tr("Error message: ") + QString::fromStdString(error);
     return false;
   }
 
-  // setup ip tables
-  ip_tables_ = std::make_unique<fptn::routing::IPTables>(network_interface,
-      tun_interface_name, server_ip, dns_server_ipv4, dns_server_ipv6,
-      gateway_ip, tun_interface_address_ipv4, tun_interface_address_ipv6);
+  const auto blacklist_domains = settings_->BlacklistDomains();
+  const auto exclude_networks = settings_->ExcludeTunnelNetworks();
+  const auto include_networks = settings_->IncludeTunnelNetworks();
+  const bool enable_split_tunnel = settings_->EnableSplitTunnel();
+  const QString split_tunnel_mode = settings_->SplitTunnelMode();
+  const auto split_tunnel_domains = settings_->SplitTunnelDomains();
+
+  // route manager
+  route_manager_ = std::make_unique<fptn::routing::RouteManager>(
+      network_interface, tun_interface_name, server_ip, dns_server_ipv4,
+      dns_server_ipv6, gateway_ip, gateway_ipv6, tun_interface_address_ipv4,
+      tun_interface_address_ipv6
+#if _WIN32
+      ,
+      settings_->EnableAdvancedDnsManagement()
+#endif
+  );  // NOLINT
+
+  // setup plugins
+  std::vector<fptn::plugin::BasePluginPtr> client_plugins;
+  if (!blacklist_domains.empty()) {
+    std::vector<std::string> blacklist_domains_std;
+    for (const auto& domain : blacklist_domains) {
+      blacklist_domains_std.push_back(domain.toStdString());
+    }
+    auto blacklist_plugin = std::make_unique<fptn::plugin::DomainBlacklist>(
+        blacklist_domains_std, route_manager_);
+    client_plugins.push_back(std::move(blacklist_plugin));
+  }
+  if (enable_split_tunnel) {
+    std::vector<std::string> split_domains_std;
+    for (const auto& domain : split_tunnel_domains) {
+      split_domains_std.push_back(domain.toStdString());
+    }
+
+    const auto policy = (split_tunnel_mode == "exclude")
+                            ? fptn::routing::RoutingPolicy::kExcludeFromVpn
+                            : fptn::routing::RoutingPolicy::kIncludeInVpn;
+
+    auto split_tunnel_plugin = std::make_unique<fptn::plugin::Tunneling>(
+        split_domains_std, route_manager_, policy);
+    client_plugins.push_back(std::move(split_tunnel_plugin));
+  }
 
   // setup tun interface
   auto virtual_network_interface =
@@ -768,13 +864,14 @@ bool TrayApp::startVpn(QString& err_msg) {
               126  // IPv6 netmask
           });
 
-  // setup vpn client
+  // setup vpn client с плагинами
   vpn_client_ = std::make_unique<fptn::vpn::VpnClient>(std::move(http_client),
-      std::move(virtual_network_interface), dns_server_ipv4, dns_server_ipv6);
+      std::move(virtual_network_interface), dns_server_ipv4, dns_server_ipv6,
+      std::move(client_plugins));
 
   // Wait for the WebSocket tunnel to establish
   vpn_client_->Start();
-  constexpr auto kTimeout = std::chrono::seconds(5);
+  constexpr auto kTimeout = std::chrono::seconds(10);
   const auto start = std::chrono::steady_clock::now();
   while (!vpn_client_->IsStarted()) {
     if (std::chrono::steady_clock::now() - start > kTimeout) {
@@ -783,19 +880,37 @@ bool TrayApp::startVpn(QString& err_msg) {
     }
     std::this_thread::sleep_for(std::chrono::microseconds(300));
   }
-  ip_tables_->Apply();
+
+  route_manager_->Apply();
+
+  if (!exclude_networks.empty()) {
+    std::vector<std::string> exclude_networks_std;
+    for (const auto& network : exclude_networks) {
+      exclude_networks_std.push_back(network.toStdString());
+    }
+    route_manager_->AddExcludeNetworks(exclude_networks_std);
+  }
+
+  if (!include_networks.empty()) {
+    std::vector<std::string> include_networks_std;
+    for (const auto& network : include_networks) {
+      include_networks_std.push_back(network.toStdString());
+    }
+    route_manager_->AddIncludeNetworks(include_networks_std);
+  }
 
   return true;
 }
 
 bool TrayApp::stopVpn() {
+  SPDLOG_INFO("Stopping vpn");
   if (vpn_client_) {
     vpn_client_->Stop();
     vpn_client_.reset();
   }
-  if (ip_tables_) {
-    ip_tables_->Clean();
-    ip_tables_.reset();
+  if (route_manager_) {
+    route_manager_->Clean();
+    route_manager_.reset();
   }
   return true;
 }

@@ -9,6 +9,8 @@ import tempfile
 import threading
 from pathlib import Path
 
+import brotli
+
 from loguru import logger
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.constants import ParseMode
@@ -28,13 +30,22 @@ FPTN_WELCOME_MESSAGE_RU = os.getenv("FPTN_WELCOME_MESSAGE_RU", "")
 MAX_USER_SPEED_LIMIT = int(os.getenv("MAX_USER_SPEED_LIMIT"))
 SERVICE_NAME = os.getenv("SERVICE_NAME")
 USERS_FILE = Path(os.getenv("USERS_FILE", "/etc/fptn/users.list"))
-SERVERS_LIST_FILE = os.getenv("SERVERS_LIST_FILE")
-SERVERS_CENSORED_LIST_FILE = os.getenv("SERVERS_CENSORED_LIST_FILE")
+SERVERS_LIST_FILE = os.getenv("SERVERS_LIST_FILE", "/etc/fptn/servers.json")
+PREMIUM_SERVERS_FILE = os.getenv("PREMIUM_SERVERS_FILE", "/etc/fptn/premium_servers.json")
+SERVERS_CENSORED_LIST_FILE = os.getenv("SERVERS_CENSORED_LIST_FILE", "/etc/fptn/servers_censored_zone.json")
+
+ENABLE_BROTLI_COMPRESSION = os.getenv("ENABLE_BROTLI_COMPRESSION", "false").lower() == "true"
+
+if os.path.exists(PREMIUM_SERVERS_FILE):
+    with open(PREMIUM_SERVERS_FILE, "r") as fp:
+        PREMIUM_SERVERS = json.load(fp)
+else:
+    PREMIUM_SERVERS = []
 
 with open(SERVERS_LIST_FILE, "r") as fp:
     SERVERS_LIST = json.load(fp)
 
-if SERVERS_CENSORED_LIST_FILE is not None:
+if os.path.exists(SERVERS_CENSORED_LIST_FILE):
     with open(SERVERS_CENSORED_LIST_FILE, "r") as fp:
         SERVERS_CENSORED_LIST = json.load(fp)
 else:
@@ -73,34 +84,48 @@ class UserManager:
             with self.users_file.open("r") as file:
                 for line in file:
                     parts = line.strip().split()
-                    if len(parts) == 3:
-                        username, hashed_password, _ = parts
-                        users[username] = hashed_password
+                    if len(parts) == 4:
+                        username, hashed_password, speed, is_premium = parts[0], parts[1], parts[2], parts[3] == "1"
+                    elif len(parts) == 3:
+                        username, hashed_password, speed, is_premium = parts[0], parts[1], parts[2], False
+                    users[username] = {
+                        "password": hashed_password,
+                        "speed": speed,
+                        "is_premium": is_premium,
+                    }
         return users
 
     def save_users(self, users: dict):
-        self.users_file.parent.mkdir(
-            parents=True, exist_ok=True
-        )  # Ensure the directory exists
+        self.users_file.parent.mkdir(parents=True, exist_ok=True)
         with self.users_file.open("w") as file:
-            for username, hashed_password in users.items():
-                file.write(
-                    f"{username} {hashed_password} {MAX_USER_SPEED_LIMIT}\n"
-                )  # Default balance
+            for username, data in users.items():
+                password, speed = data["password"], data["speed"]
+                is_premium = "1" if data["is_premium"] is True else "0"
+                file.write(f"{username} {password} {speed} {is_premium}\n")
+
+    def is_premium_user(self, user_id: str) -> bool:
+        username = f"user{user_id}"
+        with self.user_data_lock:
+            users = self.load_users()
+            if username in users:
+                return users[username].get("is_premium", False)
+        return False
 
     def register_user(self, user_id: str) -> (str, str):
         username = f"user{user_id}"
         with self.user_data_lock:
             users = self.load_users()
             if username in users:
-                logger.info(
-                    f"User {user_id} attempted to register but is already registered."
-                )
+                logger.info(f"User {user_id} attempted to register but is already registered.")
                 return username, None
             else:
                 password = self._generate_password()
                 hashed_password = self._hash_password(password)
-                users[username] = hashed_password
+                users[username] = {
+                    "password": hashed_password,
+                    "speed": str(MAX_USER_SPEED_LIMIT),
+                    "is_premium": False,
+                }
                 self.save_users(users)
                 logger.info(f"User {user_id} registered with username: {username}")
                 return username, password
@@ -109,8 +134,7 @@ class UserManager:
         username = f"user{user_id}"
         with self.user_data_lock:
             users = self.load_users()
-            if username in users:
-                return True
+            return username in users
         return False
 
     def reset_password(self, user_id: str) -> (str, str):
@@ -120,14 +144,14 @@ class UserManager:
             if username in users:
                 new_password = self._generate_password()
                 hashed_password = self._hash_password(new_password)
-                users[username] = hashed_password
+                current_speed = users[username]["speed"]
+                current_premium = users[username].get("is_premium", False)
+                users[username] = {"password": hashed_password, "speed": current_speed, "is_premium": current_premium}
                 self.save_users(users)
-                logger.info(f"User {user_id} reset password.")
+                logger.info(f"User {user_id} reset password. Premium: {current_premium}")
                 return username, new_password
             else:
-                logger.info(
-                    f"User {user_id} attempted to reset password but is not registered."
-                )
+                logger.info(f"User {user_id} attempted to reset password but is not registered.")
                 return username, None
 
 
@@ -159,36 +183,46 @@ async def start(update: Update, context: CallbackContext) -> None:
         logger.error(f"Error: {e}")
 
 
-def generate_token(username: str, password: str) -> str:
+def generate_token(username: str, password: str, is_premium: bool) -> str:
+    if is_premium is True:
+        servers = PREMIUM_SERVERS + SERVERS_LIST
+    else:
+        servers = SERVERS_LIST
     data = {
         "version": 1,
         "service_name": SERVICE_NAME,
         "username": username,
         "password": password,
-        "servers": SERVERS_LIST,
+        "servers": servers,
         "censored_zone_servers": SERVERS_CENSORED_LIST,
     }
-    return json.dumps(data)
+    return json.dumps(data, separators=(",", ":"))
 
 
 def generate_access_link(token: str) -> str:
-    base64_content = base64.b64encode(token.encode("utf-8")).decode().replace("=", "")
-    return f"fptn:{base64_content}"
+    if ENABLE_BROTLI_COMPRESSION is True:
+        compressed = brotli.compress(token.encode("utf-8"), quality=11, lgwin=24, lgblock=24, mode=brotli.MODE_TEXT)
+        return "fptnb:" + base64.b64encode(compressed).decode("utf-8").replace("=", "")
+    return "fptn:" + base64.b64encode(token.encode("utf-8")).decode().replace("=", "")
 
 
 async def get_access_token(update: Update, context: CallbackContext) -> None:
     MESSAGES = {
         "en": {
             "status_registered": "🎉✨ You have successfully registered! 🎉",
-            "status_reset": "🔑 Your  token has been reset! 🔑",
-            "info": "🌐 _ You can download the client from the official project website _ [https://batchar2.github.io/fptn/](https://batchar2.github.io/fptn/)",
+            "status_reset": "🔑 Your token has been reset! 🔑",
+            "info": "🌐 You can download the client from https://storage.googleapis.com/fptn.org/index.html",
             "click_to_copy": "📋💾 Tap the **token below** to copy it and paste it into the app! ⬇️",
+            "support_info": "You can support our small hobby project on [Boosty](https://boosty.to/fptn) by donating to help cover server costs. ❤️❤️❤️",
+            "support_benefits": "_Sponsors enjoy unlimited speed, access to more servers, and can optionally have their names featured in our VPN clients' credits. More details in our Telegram chat _ https://t.me/fptn\_project ",
         },
         "ru": {
             "status_registered": "🎉✨ Вы успешно зарегистрированы! 🎉",
             "status_reset": "🔑 Ваш токен был сброшен!🔑",
-            "info": "🌐 _ Клиент можно скачать с официального сайта проекта _ [https://batchar2.github.io/fptn/](https://batchar2.github.io/fptn/) ",
+            "info": "🌐 Клиент можно скачать с https://storage.googleapis.com/fptn.org/index.html",
             "click_to_copy": "📋💾 Нажмите на **токен ниже**, чтобы скопировать и вставите его в приложение! ⬇️",
+            "support_info": "Вы можете поддержать наш небольшой хобби-проект на [Boosty](https://boosty.to/fptn), сделав донат для оплаты серверов. ❤️❤️❤️",
+            "support_benefits": "_Спонсорам мы убираем лимиты скорости, предоставляем доступ к большему числу серверов и, по желанию, отображаем их ники в списке благодарностей прямо в наших VPN-клиентах. Подробнее — в нашем Telegram-чате _ https://t.me/fptn\_project ",
         },
     }
     user_id = update.message.from_user.id
@@ -202,20 +236,21 @@ async def get_access_token(update: Update, context: CallbackContext) -> None:
         username, password = user_manager.register_user(user_id)
         status_message = messages["status_registered"]
 
-    token = generate_token(username, password)
+    is_premium = user_manager.is_premium_user(user_id)
+    token = generate_token(username, password, is_premium)
     fptn_link = generate_access_link(token)
     click_to_copy = messages["click_to_copy"]
     info = messages["info"]
+    support_info = messages["support_info"]
+    support_benefits = messages["support_benefits"]
     await update.message.reply_text(
-        f"{status_message}\n\n" f"{info}\n\n\n" f"{click_to_copy}\n\n" f"`{fptn_link}`",
+        f"{status_message}\n\n" f"{info}\n\n" f"{click_to_copy}\n\n" f"`{fptn_link}` \n\n{support_info} \n{support_benefits}",
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True,
     )
 
 
-async def send_credentials_file(
-    update: Update, context: CallbackContext, token: str
-) -> None:
+async def send_credentials_file(update: Update, context: CallbackContext, token: str) -> None:
     # Create a unique temporary file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".fptn") as temp_file:
         temp_file_path = temp_file.name
@@ -236,9 +271,7 @@ async def send_credentials_file(
 
 def main() -> None:
     if not TELEGRAM_API_TOKEN:
-        logger.error(
-            "API_TOKEN is not set. Please set the TELEGRAM_API_TOKEN environment variable."
-        )
+        logger.error("API_TOKEN is not set. Please set the TELEGRAM_API_TOKEN environment variable.")
         sys.exit(1)
 
     application = Application.builder().token(TELEGRAM_API_TOKEN).build()
@@ -248,9 +281,7 @@ def main() -> None:
     application.add_handler(CommandHandler("token_mac", get_access_token))
 
     # UPDATE KEYBOARD (OLD VERSION)
-    application.add_handler(
-        MessageHandler(filters.TEXT & filters.Regex("Get access file"), start)
-    )
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex("Get access file"), start))
     logger.info("Bot started and is polling for messages.")
     application.run_polling()
 

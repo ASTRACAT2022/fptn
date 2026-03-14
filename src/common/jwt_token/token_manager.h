@@ -8,7 +8,6 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 
 #include <chrono>
 #include <fstream>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -23,15 +22,12 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 namespace fptn::common::jwt_token {
 class TokenManager {
  public:
-  TokenManager(const std::string& server_crt_path,
-      const std::string& server_key_path,
-      const std::string& server_pub_path)
+  TokenManager(
+      const std::string& server_crt_path, const std::string& server_key_path)
       : server_crt_path_(server_crt_path),
         server_key_path_(server_key_path),
-        server_pub_path_(server_pub_path),
         server_crt_(ReadFromFile(server_crt_path_)),
-        server_key_(ReadFromFile(server_key_path_)),
-        server_pub_(ReadFromFile(server_pub_path)) {}
+        server_key_(ReadFromFile(server_key_path_)) {}
 
   [[nodiscard]] std::pair<std::string, std::string> Generate(
       const std::string& username, int bandwidth_bit) const noexcept {
@@ -81,8 +77,6 @@ class TokenManager {
 
   const std::string& ServerKeyPath() const noexcept { return server_key_path_; }
 
-  const std::string& ServerPubPath() const noexcept { return server_pub_path_; }
-
  private:
   std::string ReadFromFile(const std::string& path) noexcept {
     std::ifstream is(path, std::ios::binary);
@@ -98,11 +92,9 @@ class TokenManager {
  private:
   const std::string server_crt_path_;
   const std::string server_key_path_;
-  const std::string server_pub_path_;
 
   const std::string server_crt_;
   const std::string server_key_;
-  const std::string server_pub_;
 };
 
 using TokenManagerSPtr = std::shared_ptr<TokenManager>;

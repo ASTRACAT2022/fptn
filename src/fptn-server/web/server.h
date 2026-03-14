@@ -22,6 +22,7 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include "common/jwt_token/token_manager.h"
 #include "common/network/ip_packet.h"
 
+#include "handshake/handshake_cache_manager.h"
 #include "listener/listener.h"
 #include "nat/table.h"
 #include "user/user_manager.h"
@@ -35,10 +36,13 @@ class Server final {
       const fptn::common::jwt_token::TokenManagerSPtr& token_manager,
       const fptn::statistic::MetricsSPtr& prometheus,
       const std::string& prometheus_access_key,
-      const pcpp::IPv4Address& dns_server_ipv4,
-      const pcpp::IPv6Address& dns_server_ipv6,
+      fptn::common::network::IPv4Address dns_server_ipv4,
+      fptn::common::network::IPv6Address dns_server_ipv6,
       bool enable_detect_probing,
+      std::string default_proxy_domain,
+      std::vector<std::string> allowed_sni_list,
       std::size_t max_active_sessions_per_user,
+      std::string server_external_ips,
       int thread_number = 4);
   ~Server();
   bool Start();
@@ -61,9 +65,9 @@ class Server final {
  protected:
   // websocket
   bool HandleWsOpenConnection(fptn::ClientID client_id,
-      const pcpp::IPv4Address& client_ip,
-      const pcpp::IPv4Address& client_vpn_ipv4,
-      const pcpp::IPv6Address& client_vpn_ipv6,
+      const fptn::common::network::IPv4Address& client_ip,
+      const fptn::common::network::IPv4Address& client_vpn_ipv4,
+      const fptn::common::network::IPv6Address& client_vpn_ipv6,
       const SessionSPtr& session,
       const std::string& url,
       const std::string& access_token);
@@ -86,10 +90,14 @@ class Server final {
   const fptn::common::jwt_token::TokenManagerSPtr token_manager_;
   const fptn::statistic::MetricsSPtr& prometheus_;
   const std::string prometheus_access_key_;
-  const pcpp::IPv4Address dns_server_ipv4_;
-  const pcpp::IPv6Address dns_server_ipv6_;
+  const fptn::common::network::IPv4Address dns_server_ipv4_;
+  const fptn::common::network::IPv6Address dns_server_ipv6_;
   const bool enable_detect_probing_;
+  const std::string default_proxy_domain_;
+  const std::vector<std::string> allowed_sni_list_;
+
   const std::size_t max_active_sessions_per_user_;
+  const std::string server_external_ips_;
   const std::size_t thread_number_;
 
   boost::asio::io_context ioc_;
@@ -97,6 +105,8 @@ class Server final {
   fptn::common::data::ChannelAsyncPtr to_client_;
 
   ListenerSPtr listener_;
+
+  HandshakeCacheManagerSPtr handshake_cache_manager_;
 
   std::vector<std::thread> ioc_threads_;
   std::unordered_map<fptn::ClientID, SessionSPtr> sessions_;

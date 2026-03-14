@@ -14,51 +14,70 @@ Manager::Manager(fptn::web::ServerPtr web_server,
     fptn::network::VirtualInterfacePtr network_interface,
     fptn::nat::TableSPtr nat,
     fptn::filter::ManagerSPtr filter,
-    fptn::statistic::MetricsSPtr prometheus)
+    fptn::statistic::MetricsSPtr prometheus,
+    std::size_t thread_pool_size)
     : web_server_(std::move(web_server)),
       network_interface_(std::move(network_interface)),
       nat_(std::move(nat)),
       filter_(std::move(filter)),
-      prometheus_(std::move(prometheus)) {}
+      prometheus_(std::move(prometheus)),
+      thread_pool_size_(thread_pool_size > 0 ? thread_pool_size : 1) {
+  read_to_client_threads_.reserve(thread_pool_size_);
+  read_from_client_threads_.reserve(thread_pool_size_);
+}
 
 Manager::~Manager() { Stop(); }
 
-bool Manager::Stop() noexcept {
+bool Manager::Stop() {
   running_ = false;
-  if (read_to_client_thread_.joinable()) {
-    read_to_client_thread_.join();
+
+  network_interface_->Stop();
+  web_server_->Stop();
+
+  for (auto& thread : read_to_client_threads_) {
+    if (thread.joinable()) {
+      thread.join();
+    }
   }
-  if (read_from_client_thread_.joinable()) {
-    read_from_client_thread_.join();
+  read_to_client_threads_.clear();
+
+  for (auto& thread : read_from_client_threads_) {
+    if (thread.joinable()) {
+      thread.join();
+    }
   }
+  read_from_client_threads_.clear();
+
   if (collect_statistics_.joinable()) {
     collect_statistics_.join();
   }
-  return (web_server_->Stop() && network_interface_->Stop());
+  return true;
 }
 
-bool Manager::Start() noexcept {
+bool Manager::Start() {
   running_ = true;
   web_server_->Start();
   network_interface_->Start();
 
-  read_to_client_thread_ = std::thread(&Manager::RunToClient, this);
-  const bool to_status = read_to_client_thread_.joinable();
+  for (size_t i = 0; i < thread_pool_size_; ++i) {
+    read_to_client_threads_.emplace_back(&Manager::RunToClient, this);
+  }
 
-  read_from_client_thread_ = std::thread(&Manager::RunFromClient, this);
-  const bool from_status = read_from_client_thread_.joinable();
+  for (size_t i = 0; i < thread_pool_size_; ++i) {
+    read_from_client_threads_.emplace_back(&Manager::RunFromClient, this);
+  }
 
   collect_statistics_ = std::thread(&Manager::RunCollectStatistics, this);
   const bool collect_statistic_status = collect_statistics_.joinable();
-  return (to_status && from_status && collect_statistic_status);
+  return collect_statistic_status;
 }
 
-void Manager::RunToClient() noexcept {
-  const std::chrono::milliseconds timeout{30};
+void Manager::RunToClient() const noexcept {
+  constexpr std::chrono::milliseconds kTimeout{100};
 
   while (running_) {
-    auto packet = network_interface_->WaitForPacket(timeout);
-    if (!packet) {
+    auto packet = network_interface_->WaitForPacket(kTimeout);
+    if (!packet || !running_) {
       continue;
     }
     if (!packet->IsIPv4() && !packet->IsIPv6()) {
@@ -67,13 +86,13 @@ void Manager::RunToClient() noexcept {
     // get session using "fake" client address
     fptn::client::SessionSPtr session = nullptr;
     if (packet->IsIPv4()) {
-      session =
-          nat_->GetSessionByFakeIPv4(packet->IPv4Layer()->getDstIPv4Address());
+      session = nat_->GetSessionByFakeIPv4(fptn::common::network::IPv4Address(
+          packet->IPv4Layer()->getDstIPv4Address()));
     } else if (packet->IsIPv6()) {
-      session =
-          nat_->GetSessionByFakeIPv6(packet->IPv6Layer()->getDstIPv6Address());
+      session = nat_->GetSessionByFakeIPv6(fptn::common::network::IPv6Address(
+          packet->IPv6Layer()->getDstIPv6Address()));
     }
-    if (!session) {
+    if (!session || !running_) {
       continue;
     }
     // check shaper
@@ -82,24 +101,26 @@ void Manager::RunToClient() noexcept {
       continue;
     }
     // send
-    web_server_->Send(session->ChangeIPAddressToClientIP(std::move(packet)));
+    if (running_) {
+      web_server_->Send(session->ChangeIPAddressToClientIP(std::move(packet)));
+    }
   }
 }
 
-void Manager::RunFromClient() noexcept {
-  const std::chrono::milliseconds timeout{30};
+void Manager::RunFromClient() const noexcept {
+  constexpr std::chrono::milliseconds kTimeout{100};
 
   while (running_) {
-    auto packet = web_server_->WaitForPacket(timeout);
-    if (!packet) {
+    auto packet = web_server_->WaitForPacket(kTimeout);
+    if (!packet || !running_) {
       continue;
     }
     if (!packet->IsIPv4() && !packet->IsIPv6()) {
       continue;
     }
     // get session
-    auto session = nat_->GetSessionByClientId(packet->ClientId());
-    if (!session) {
+    const auto session = nat_->GetSessionByClientId(packet->ClientId());
+    if (!session || !running_) {
       continue;
     }
     // check shaper
@@ -109,12 +130,14 @@ void Manager::RunFromClient() noexcept {
     }
     // filter
     packet = filter_->Apply(std::move(packet));
-    if (!packet) {
+    if (!packet || !running_) {
       continue;
     }
     // send
-    network_interface_->Send(
-        session->ChangeIPAddressToFakeIP(std::move(packet)));
+    if (running_) {
+      network_interface_->Send(
+          session->ChangeIPAddressToFakeIP(std::move(packet)));
+    }
   }
 }
 

@@ -10,18 +10,17 @@ import subprocess
 
 import requests
 
-
 INNOSETUP_DEFAULT_PATH = r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 
-INSTALLER_DIR = pathlib.Path(__file__).parent.resolve() / "installer"
+REPOSITORY_FOLDER = pathlib.Path(__file__).parent.parent.parent
 
+INSTALLER_DIR = pathlib.Path(__file__).parent.resolve() / "installer"
 
 TMP_DIR = INSTALLER_DIR / "tmp"
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 DEPENDS_DIR = INSTALLER_DIR / "depends"
 DEPENDS_DIR.mkdir(parents=True, exist_ok=True)
-
 
 DEPENDS_QT_DIR = DEPENDS_DIR / "qt"
 DEPENDS_QT_DIR.mkdir(parents=True, exist_ok=True)
@@ -56,9 +55,7 @@ def download_file(url: str, destination_path: pathlib.Path) -> bool:
                 file.write(response.content)
             print(f"File downloaded successfully: {destination_path}")
             return True
-        raise ConnectionError(
-            f"Failed to download file: HTTP {response.status_code} {response.reason}"
-        )
+        raise ConnectionError(f"Failed to download file: HTTP {response.status_code} {response.reason}")
     except Exception as err:
         raise err
 
@@ -112,23 +109,19 @@ def copy_qt_libraries(frameworks_path: pathlib.Path):
         lib_path = pathlib.Path(lib)
         lib_name = lib_path.name
         if r"qtbase/bin/" in str(lib_path.as_posix()):
-            if r".6.7.1.dll" in lib_name:
-                lib_name = lib_name.replace(".6.7.1.dll", ".6.dll")
+            if r".6.7.3.dll" in lib_name:
+                lib_name = lib_name.replace(".6.7.3.dll", ".6.dll")
             print(f"Copy {lib} -> {frameworks_path / lib_name}")
             shutil.copy(lib, frameworks_path / lib_name)
         elif "qtbase/plugins" in str(lib_path.as_posix()):
             separated = str(lib_path.as_posix()).split("qtbase/plugins/")
-            plugin_folder = frameworks_qt_plugins_path / separated[1].replace(
-                lib_name, ""
-            )
+            plugin_folder = frameworks_qt_plugins_path / separated[1].replace(lib_name, "")
             os.makedirs(plugin_folder, exist_ok=True)
             print(f"Copy {lib_path} -> {plugin_folder / lib_name}")
             shutil.copy(lib, plugin_folder / lib_name)
 
 
-def compile_inno_setup_script(
-    script_path: pathlib.Path, output_dir: pathlib.Path
-) -> bool:
+def compile_inno_setup_script(script_path: pathlib.Path, output_dir: pathlib.Path) -> bool:
     command = [INNOSETUP_DEFAULT_PATH, script_path]
     # if output_dir:
     #     command.append(f"/O{output_dir}")
@@ -158,9 +151,7 @@ def compile_inno_setup_script(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="A script to manage the build process for FPTN Client."
-    )
+    parser = argparse.ArgumentParser(description="A script to manage the build process for FPTN Client.")
     parser.add_argument(
         "--wintun-dll",
         type=pathlib.Path,
@@ -185,21 +176,26 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if is_arm_64():
-        download_file(
-            "https://aka.ms/vs/17/release/vc_redist.arm64.exe", DEPENDS_VC_REDIST_PATH
-        )
+        download_file("https://aka.ms/vs/17/release/vc_redist.arm64.exe", DEPENDS_VC_REDIST_PATH)
     elif is_windows_x86_64():
-        download_file(
-            "https://aka.ms/vs/17/release/vc_redist.x64.exe", DEPENDS_VC_REDIST_PATH
-        )
+        download_file("https://aka.ms/vs/17/release/vc_redist.x64.exe", DEPENDS_VC_REDIST_PATH)
     else:
         raise EnvironmentError("Unsuported system!")
+
     # copy wintun dll
     shutil.copy(args.wintun_dll, DEPENDS_WINTUN_DLL_PATH)
     # copy clients
-
     shutil.copy(args.fptn_client, APP_FPTN_CLIENT)
     shutil.copy(args.fptn_client_cli, APP_FPTN_CLIENT_CLI)
+
+    # copy SNI files from deploy/sni to depends/sni
+    sni_source = REPOSITORY_FOLDER / "deploy" / "sni"
+    sni_dest = DEPENDS_DIR / "sni"
+    if sni_source.exists():
+        print(f"Copying SNI files from {sni_source} to {sni_dest}")
+        shutil.copytree(sni_source, sni_dest, dirs_exist_ok=True)
+    else:
+        print(f"Warning: SNI source folder not found: {sni_source}")
 
     # prepare innosetup
     INNOSETUP_SCRIPT_PATH = INSTALLER_DIR / "fptn-installer.iss"
@@ -212,7 +208,6 @@ if __name__ == "__main__":
             "APP_VERSION_NAME": args.version,
             "APP_VERSION_NUMBER": datetime.datetime.now().strftime("%Y.%m.%d.%H%M"),
             "APP_COPYRIGHT_YEAR": str(datetime.datetime.now().year),
-            "ARCHITECTURES_ALLOWED": "arm64 x64os" if is_arm_64() else "x64os",
         },
     )
 
@@ -236,17 +231,10 @@ if __name__ == "__main__":
 
     # change permissions
     manifest = INSTALLER_DIR / "app.manifest"
-    run_command(
-        f'mt.exe -manifest "{manifest.as_posix()}" -outputresource:"{APP_FPTN_CLIENT.as_posix()}";1'
-    )
-    run_command(
-        f'mt.exe -manifest "{manifest.as_posix()}" -outputresource:"{APP_FPTN_CLIENT_CLI.as_posix()}";1'
-    )
+    run_command(f'mt.exe -manifest "{manifest.as_posix()}" -outputresource:"{APP_FPTN_CLIENT.as_posix()}";1')
+    run_command(f'mt.exe -manifest "{manifest.as_posix()}" -outputresource:"{APP_FPTN_CLIENT_CLI.as_posix()}";1')
 
     compile_inno_setup_script(PREPARED_INNOSETUP_SCRIPT_PATH, OUTPUT_DIR)
     arch = "arm64" if is_arm_64() else "x64_x86"
-    output_file = (
-        pathlib.Path(args.output_folder)
-        / f"FptnClientInstaller-{args.version}-windows-{arch}.exe"
-    )
+    output_file = pathlib.Path(args.output_folder) / f"FptnClientInstaller-{args.version}-windows-{arch}.exe"
     shutil.copy(INSTALLER_DIR / "Output" / "FptnClientInstaller.exe", output_file)

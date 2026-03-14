@@ -13,13 +13,21 @@ find_package(argparse REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(PcapPlusPlus REQUIRED)
-find_package(Boost REQUIRED COMPONENTS random filesystem process)
+find_package(Boost REQUIRED COMPONENTS random filesystem process locale)
 find_package(ZLIB REQUIRED)
 find_package(httplib REQUIRED)
-
+find_package(libidn2 REQUIRED)
+find_package(re2 REQUIRED)
 find_package(nlohmann_json REQUIRED)
-
 include_directories(${nlohmann_json_INCLUDE_DIRS})
+
+## brotli
+find_package(brotli REQUIRED)
+find_path(BROTLI_INCLUDE_DIR "brotli/decode.h" REQUIRED)
+include_directories(${BROTLI_INCLUDE_DIR})
+find_library(BROTLI_DEC_LIB NAMES brotlidec REQUIRED)
+find_library(BROTLI_COMMON_LIB NAMES brotlicommon REQUIRED)
+find_library(BROTLI_ENC_LIB NAMES brotlienc REQUIRED)
 
 # fptn-client-cli
 add_executable(
@@ -27,12 +35,19 @@ add_executable(
   fptn-client-cli.cpp
   vpn/vpn_client.h
   vpn/vpn_client.cpp
-  http/client.h
-  http/client.cpp
-  routing/iptables.h
-  routing/iptables.cpp
+  vpn/http/client.h
+  vpn/http/client.cpp
+  routing/route_manager.h
+  routing/route_manager.cpp
   config/config_file.cpp
-  config/config_file.h)
+  config/config_file.h
+  plugins/split/tunneling.h
+  plugins/split/tunneling.cpp
+  plugins/blacklist/domain_blacklist.h
+  plugins/blacklist/domain_blacklist.cpp
+  utils/speed_estimator/speed_estimator.cpp
+  utils/speed_estimator/speed_estimator.h
+  utils/speed_estimator/server_info.h)
 
 target_link_libraries(
   "${PROJECT_NAME}-cli"
@@ -41,6 +56,7 @@ target_link_libraries(
           Boost::random
           Boost::filesystem
           Boost::process
+          Boost::locale
           OpenSSL::SSL
           OpenSSL::Crypto
           argparse::argparse
@@ -48,8 +64,12 @@ target_link_libraries(
           spdlog::spdlog
           fmt::fmt
           PcapPlusPlus::PcapPlusPlus
+          libidn2::libidn2
+          re2::re2
           fptn-protocol-lib_static
-          ${TUNTAP_LIB})
+          "${TUNTAP_LIB}"
+          "${BROTLI_DEC_LIB}"
+          "${BROTLI_COMMON_LIB}")
 
 # fptn-client-gui
 if("${FPTN_BUILD_WITH_GUI_CLIENT}")
@@ -104,10 +124,10 @@ WarningsAsErrors: ''
     fptn-client-gui.cpp
     vpn/vpn_client.h
     vpn/vpn_client.cpp
-    http/client.h
-    http/client.cpp
-    routing/iptables.h
-    routing/iptables.cpp
+    vpn/http/client.h
+    vpn/http/client.cpp
+    routing/route_manager.h
+    routing/route_manager.cpp
     config/config_file.cpp
     config/config_file.h
     gui/tray/tray.h
@@ -122,14 +142,26 @@ WarningsAsErrors: ''
     gui/tokendialog/tokendialog.cpp
     gui/translations/translations.h
     gui/translations/translations.cpp
+    gui/sni_manager/sni_manager.h
+    gui/sni_manager/sni_manager.cpp
+    gui/sni_autoscan_dialog/sni_autoscan_dialog.h
+    gui/sni_autoscan_dialog/sni_autoscan_dialog.cpp
     gui/style/style.h
     gui/style/style.cpp
     gui/autostart/autostart.h
     gui/autoupdate/autoupdate.h
+    plugins/split/tunneling.h
+    plugins/split/tunneling.cpp
+    plugins/blacklist/domain_blacklist.h
+    plugins/blacklist/domain_blacklist.cpp
     utils/windows/vpn_conflict.h
     utils/macos/admin.h
+    utils/speed_estimator/speed_estimator.cpp
+    utils/speed_estimator/speed_estimator.h
+    utils/speed_estimator/server_info.h
     ${PROJECT_RESOURCES}
     ${TRANSLATIONS_OUT})
+
   target_link_libraries(
     "${PROJECT_NAME}-gui"
     PRIVATE ZLIB::ZLIB
@@ -137,6 +169,7 @@ WarningsAsErrors: ''
             Boost::random
             Boost::filesystem
             Boost::process
+            Boost::locale
             OpenSSL::SSL
             OpenSSL::Crypto
             argparse::argparse
@@ -148,9 +181,13 @@ WarningsAsErrors: ''
             Qt6::Widgets
             Qt6::Network
             Qt6::Concurrent
+            libidn2::libidn2
+            re2::re2
             fptn-protocol-lib_static
             httplib::httplib
             "${TUNTAP_LIB}"
+            "${BROTLI_DEC_LIB}"
+            "${BROTLI_COMMON_LIB}"
             "${PLATFORM_SPECIFIC_LIBS}")
   set_target_properties("${PROJECT_NAME}-gui" PROPERTIES AUTOMOC ON)
 endif()

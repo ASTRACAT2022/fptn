@@ -9,10 +9,11 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <spdlog/spdlog.h>  // NOLINT(build/include_order)
 
-using fptn::config::CommandLineConfig;
+#include "common/utils/utils.h"
 
 namespace {
 bool ParseBoolean(std::string value) noexcept {
@@ -28,12 +29,16 @@ bool ParseBoolean(std::string value) noexcept {
 }
 }  // namespace
 
+namespace fptn::config {
+
+using fptn::common::network::IPv4Address;
+using fptn::common::network::IPv6Address;
+
 CommandLineConfig::CommandLineConfig(int argc, char* argv[])
     : argc_(argc), argv_(argv), args_("fptn-server", FPTN_VERSION) {
   // Required arguments
   args_.add_argument("--server-crt").required().help("Path to server.crt file");
   args_.add_argument("--server-key").required().help("Path to server.key file");
-  args_.add_argument("--server-pub").required().help("Path to server.pub file");
   args_.add_argument("--out-network-interface")
       .required()
       .help("Network out interface");
@@ -103,11 +108,32 @@ CommandLineConfig::CommandLineConfig(int argc, char* argv[])
       .help("Maximum number of active sessions allowed per VPN user")
       .default_value(3)
       .scan<'i', int>();
+  // Probing
   args_.add_argument("--enable-detect-probing")
       .help(
           "Enable detection of non-FPTN clients or probing attempts during SSL "
           "handshake. ")
       .default_value("false");
+  args_.add_argument("--default-proxy-domain")
+      .help("Default domain for proxying non-VPN clients.")
+      .default_value(FPTN_DEFAULT_SNI);
+  args_.add_argument("--allowed-sni-list")
+      .help(
+          "Comma-separated list of allowed SNI hostnames for non-VPN clients.\n"
+          "Behavior logic:\n"
+          " - List is empty (default): proxy all non-VPN traffic to "
+          "--default-proxy-domain\n"
+          " - List is NOT empty: use as whitelist:\n"
+          "   - Client SNI in list -> proxy to client's SNI\n"
+          "   - Client SNI not in list -> proxy to --default-proxy-domain")
+      .default_value("");
+  // Prevent self-proxy
+  args_.add_argument("--server-external-ips")
+      .help(
+          "Public IPv4 address of this VPN server. "
+          "Prevents proxy loops when clients connect via IP. "
+          "Example: --server-external-ip 1.2.3.4,5.6.7.8")
+      .default_value("");
 }
 
 bool CommandLineConfig::Parse() noexcept {  // NOLINT(bugprone-exception-escape)
@@ -131,10 +157,6 @@ std::string CommandLineConfig::ServerKey() const {
   return args_.get<std::string>("--server-key");
 }
 
-std::string CommandLineConfig::ServerPub() const {
-  return args_.get<std::string>("--server-pub");
-}
-
 std::string CommandLineConfig::OutNetworkInterface() const {
   return args_.get<std::string>("--out-network-interface");
 }
@@ -147,25 +169,24 @@ std::string CommandLineConfig::TunInterfaceName() const {
   return args_.get<std::string>("--tun-interface-name");
 }
 
-pcpp::IPv4Address CommandLineConfig::TunInterfaceIPv4() const {
-  return pcpp::IPv4Address(args_.get<std::string>("--tun-interface-ip"));
+IPv4Address CommandLineConfig::TunInterfaceIPv4() const {
+  return IPv4Address(args_.get<std::string>("--tun-interface-ip"));
 }
 
-pcpp::IPv4Address CommandLineConfig::TunInterfaceNetworkIPv4Address() const {
-  return pcpp::IPv4Address(
-      args_.get<std::string>("--tun-interface-network-address"));
+IPv4Address CommandLineConfig::TunInterfaceNetworkIPv4Address() const {
+  return IPv4Address(args_.get<std::string>("--tun-interface-network-address"));
 }
 
 int CommandLineConfig::TunInterfaceNetworkIPv4Mask() const {
   return args_.get<int>("--tun-interface-network-mask");
 }
 
-pcpp::IPv6Address CommandLineConfig::TunInterfaceIPv6() const {
-  return pcpp::IPv6Address(args_.get<std::string>("--tun-interface-ipv6"));
+IPv6Address CommandLineConfig::TunInterfaceIPv6() const {
+  return IPv6Address(args_.get<std::string>("--tun-interface-ipv6"));
 }
 
-pcpp::IPv6Address CommandLineConfig::TunInterfaceNetworkIPv6Address() const {
-  return pcpp::IPv6Address(
+IPv6Address CommandLineConfig::TunInterfaceNetworkIPv6Address() const {
+  return IPv6Address(
       args_.get<std::string>("--tun-interface-network-ipv6-address"));
 }
 
@@ -201,7 +222,33 @@ bool CommandLineConfig::EnableDetectProbing() const {
   return ParseBoolean(args_.get<std::string>("--enable-detect-probing"));
 }
 
+[[nodiscard]]
+std::string CommandLineConfig::DefaultProxyDomain() const {
+  auto default_domain = args_.get<std::string>("--default-proxy-domain");
+  if (default_domain.empty()) {
+    return FPTN_DEFAULT_SNI;
+  }
+  return default_domain;
+}
+
+[[nodiscard]]
+std::vector<std::string> CommandLineConfig::AllowedSniList() const {
+  const auto allowed_sni = args_.get<std::string>("--allowed-sni-list");
+  if (!allowed_sni.empty()) {
+    return common::utils::SplitCommaSeparated(
+        allowed_sni + "," + DefaultProxyDomain());
+  }
+  return {};
+}
+
 std::size_t CommandLineConfig::MaxActiveSessionsPerUser() const {
   return static_cast<std::size_t>(
       args_.get<int>("--max-active-sessions-per-user"));
 }
+
+[[nodiscard]]
+std::string CommandLineConfig::ServerExternalIPs() const {
+  return args_.get<std::string>("--server-external-ips");
+}
+
+}  // namespace fptn::config

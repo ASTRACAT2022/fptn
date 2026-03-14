@@ -9,6 +9,7 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <atomic>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -26,45 +27,77 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <pcapplusplus/SSLLayer.h>      // NOLINT(build/include_order)
 #include <spdlog/spdlog.h>              // NOLINT(build/include_order)
 
+#include "common/network/resolv.h"
 #include "common/network/utils.h"
 
+#include "fptn-protocol-lib/https/obfuscator/methods/detector.h"
+#include "fptn-protocol-lib/https/utils/tls/tls.h"
 #include "fptn-protocol-lib/protobuf/protocol.h"
 #include "fptn-protocol-lib/time/time_provider.h"
-#include "fptn-protocol-lib/tls/tls.h"
 
 namespace {
 std::atomic<fptn::ClientID> client_id_counter = 0;
 
-std::vector<std::string> GetServerIpAddresses() {
+std::vector<std::string> GetServerIpAddresses(
+    const std::string& server_external_ips) {
   static std::mutex ip_mutex;
   static std::vector<std::string> server_ips;
 
-  const std::lock_guard<std::mutex> lock(ip_mutex);  // mutex
+  const std::scoped_lock lock(ip_mutex);  // mutex
 
   if (server_ips.empty()) {
     server_ips = fptn::common::network::GetServerIpAddresses();
+
+    if (!server_external_ips.empty()) {
+      const auto external_ips =
+          fptn::common::utils::SplitCommaSeparated(server_external_ips);
+      std::ranges::copy_if(external_ips, std::back_inserter(server_ips),
+          [](const std::string& ip) {
+            return fptn::common::network::IsIpAddress(ip);
+          });
+    }
   }
   return server_ips;
 }
 
+void SetSocketTimeouts(boost::asio::ip::tcp::socket& socket, int timeout_sec) {
+  timeval tv = {};
+  tv.tv_sec = timeout_sec;
+  tv.tv_usec = 0;
+  const int socket_fd = socket.native_handle();
+  ::setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO,
+      reinterpret_cast<const char*>(&tv), sizeof(tv));
+  ::setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO,
+      reinterpret_cast<const char*>(&tv), sizeof(tv));
+}
+
 }  // namespace
 
-using fptn::web::Session;
+namespace fptn::web {
 
 Session::Session(std::uint16_t port,
     bool enable_detect_probing,
+    std::string default_proxy_domain,
+    std::vector<std::string> allowed_sni_list,
+    std::string server_external_ips,
     boost::asio::ip::tcp::socket&& socket,
     boost::asio::ssl::context& ctx,
     const ApiHandleMap& api_handles,
+    HandshakeCacheManagerSPtr handshake_cache_manager,
     WebSocketOpenConnectionCallback ws_open_callback,
     WebSocketNewIPPacketCallback ws_new_ippacket_callback,
     WebSocketCloseConnectionCallback ws_close_callback)
     : port_(port),
       enable_detect_probing_(enable_detect_probing),
-      ws_(std::move(socket), ctx),
-      strand_(ws_.get_executor()),
-      write_channel_(ws_.get_executor(), 256),
+      default_proxy_domain_(std::move(default_proxy_domain)),
+      allowed_sni_list_(std::move(allowed_sni_list)),
+      server_external_ips_(std::move(server_external_ips)),
+      ws_(ssl_stream_type(
+          obfuscator_socket_type(tcp_stream_type(std::move(socket))), ctx)),
+      strand_(boost::asio::make_strand(ws_.get_executor())),
+      write_channel_(strand_, 128),
       api_handles_(api_handles),
+      handshake_cache_manager_(std::move(handshake_cache_manager)),
       ws_open_callback_(std::move(ws_open_callback)),
       ws_new_ippacket_callback_(std::move(ws_new_ippacket_callback)),
       ws_close_callback_(std::move(ws_close_callback)),
@@ -73,24 +106,23 @@ Session::Session(std::uint16_t port,
       ws_session_was_opened_(false),
       full_queue_(false) {
   try {
-    client_id_ = ++client_id_counter;  // atomic operation
+    client_id_ = ++client_id_counter;
 
     boost::beast::get_lowest_layer(ws_).socket().set_option(
-        boost::asio::ip::tcp::no_delay(true));  // turn off the Nagle algorithm.
+        boost::asio::ip::tcp::no_delay(true));
 
     ws_.text(false);
-    ws_.binary(true);                  // Only binary
-    ws_.auto_fragment(true);           // FIXME NEED CHECK
-    ws_.read_message_max(128 * 1024);  // MaxSize (128 KB)
+    ws_.binary(true);
+    ws_.auto_fragment(true);
+    ws_.read_message_max(128 * 1024);
     ws_.set_option(boost::beast::websocket::stream_base::timeout::suggested(
         boost::beast::role_type::server));
     ws_.set_option(boost::beast::websocket::stream_base::timeout{
-        .handshake_timeout = std::chrono::seconds(60),  // Handshake timeout
-        .idle_timeout = std::chrono::seconds(60),       // Idle timeout
-        .keep_alive_pings = true                        // Enable ping timeout
-    });
-    // Set a timeout to force reconnection every 30 seconds
-    boost::beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(30));
+        .handshake_timeout = std::chrono::seconds(60),
+        .idle_timeout = std::chrono::seconds(60),
+        .keep_alive_pings = true});
+
+    boost::beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(15));
     init_completed_ = true;
   } catch (const boost::system::system_error& err) {
     SPDLOG_ERROR("Session::init failed (client_id={}): {} [{}]", client_id_,
@@ -110,7 +142,6 @@ boost::asio::awaitable<void> Session::Run() {
   boost::system::error_code ec;
 
   running_ = true;
-  // check init status
   if (!init_completed_) {
     SPDLOG_ERROR("Session not initialized. Closing connection (client_id={})",
         client_id_);
@@ -118,45 +149,87 @@ boost::asio::awaitable<void> Session::Run() {
     co_return;
   }
 
-  // Detect probing
-  if (enable_detect_probing_) {
+  // Setup traffic obfuscator
+  auto obfuscator_opt = co_await DetectObfuscator();
+  if (!obfuscator_opt.has_value()) {
+    SPDLOG_ERROR("Failed to initialize traffic obfuscator");
+    Close();
+    co_return;
+  }
+  ws_.next_layer().next_layer().set_obfuscator(obfuscator_opt.value());
+
+  // Detect probing (only for null obfuscator)
+  if (enable_detect_probing_ && obfuscator_opt.value() == nullptr) {
     const auto probing_result = co_await DetectProbing();
-    // Close connection
     if (probing_result.should_close) {
       SPDLOG_WARN(
           "Connection rejected during probing (client_id={})", client_id_);
-      Close();  // close connection
+      Close();
       co_return;
     }
-    // Run proxy
     if (probing_result.is_probing) {
       SPDLOG_WARN(
-          "Probing detected. Redirecting to proxy "
-          "(client_id={}, SNI={}, port={})",
+          "Probing detected. Redirecting to proxy (client_id={}, SNI={}, "
+          "port={})",
           client_id_, probing_result.sni, port_);
       co_await HandleProxy(probing_result.sni, port_);
-      Close();  // close connection
+      Close();
       co_return;
-    } else {
-      SPDLOG_INFO(
-          "SESSION ID correct. Continue setup connection (client_id={}))",
-          client_id_);
     }
+    SPDLOG_INFO("SESSION ID correct. Continue setup connection (client_id={})",
+        client_id_);
   }
 
-  // Handshake
+  // Check for Reality Mode handshake (only when no obfuscator is detected)
+  if (obfuscator_opt.value() == nullptr) {
+    const auto result = co_await IsRealityHandshake();
+    if (result.should_close) {
+      SPDLOG_WARN(
+          "Reality Mode handshake check failed (client_id={})", client_id_);
+      Close();
+      co_return;
+    }
+
+    // Process Reality Mode connection if detected
+    if (result.is_reality_mode) {
+      SPDLOG_INFO("Processing Reality Mode connection sni={} (client_id={}) ",
+          result.sni, client_id_);
+
+      // Prevent recursive proxy attempts for Reality Mode
+      const auto self_proxy = co_await IsSniSelfProxyAttempt(result.sni);
+      if (self_proxy) {
+        co_await HandleProxy(default_proxy_domain_, port_);
+        Close();
+        co_return;
+      }
+
+      const bool reality_success = co_await HandleRealityMode(result.sni);
+      if (!reality_success) {
+        SPDLOG_WARN("Reality mode handshake failed (client_id={})", client_id_);
+        Close();
+        co_return;
+      }
+      // For Reality Mode we use TLS obfuscator after fake handshake
+      // This provides additional encryption layer for the real connection
+      ws_.next_layer().next_layer().set_obfuscator(
+          std::make_shared<protocol::https::obfuscator::TlsObfuscator>());
+    }
+  }
+  // SSL handshake
+  boost::beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(10));
   co_await ws_.next_layer().async_handshake(
       boost::asio::ssl::stream_base::server,
       boost::asio::redirect_error(boost::asio::use_awaitable, ec));
   if (ec) {
-    SPDLOG_DEBUG(
-        "Probing check passed — continuing session setup (client_id={})",
-        client_id_);
+    SPDLOG_WARN("TLS-Handshake error (client_id={})", client_id_);
     Close();
     co_return;
   }
 
-  // Run API or WebSocket
+  // Reset obfuscator after TLS handshake
+  ws_.next_layer().next_layer().set_obfuscator(nullptr);
+
+  // Process request (HTTP or WebSocket)
   const bool status = co_await ProcessRequest();
   if (status) {
     auto self = shared_from_this();
@@ -173,33 +246,34 @@ boost::asio::awaitable<void> Session::Run() {
         },
         boost::asio::detached);
   } else {
-    Close();  // Close connection: probing failed, unexpected or HTTP request
+    Close();
   }
   co_return;
 }
 
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 boost::asio::awaitable<Session::ProbingResult> Session::DetectProbing() {
   try {
-    auto& socket = ws_.next_layer().next_layer().socket();
+    auto& tcp_socket = boost::beast::get_lowest_layer(ws_).socket();
     // Peek data without consuming it from the socket buffer!!!
     // This allows inspection without affecting subsequent reads!!!
-    std::array<std::uint8_t, 4096> buffer{};
+    std::array<std::uint8_t, 16384> buffer{};
     const std::size_t bytes_read =
-        co_await socket.async_receive(boost::asio::buffer(buffer),
+        co_await tcp_socket.async_receive(boost::asio::buffer(buffer),
             boost::asio::socket_base::message_peek, boost::asio::use_awaitable);
     if (!bytes_read) {
       SPDLOG_ERROR("Peeked zero bytes from socket (client_id={})", client_id_);
-      co_return ProbingResult{
-          .is_probing = true, .sni = FPTN_DEFAULT_SNI, .should_close = true};
+      co_return ProbingResult{.is_probing = true,
+          .sni = default_proxy_domain_,
+          .should_close = true};
     }
     // Check ssl
     if (!pcpp::SSLLayer::IsSSLMessage(
             0, 0, buffer.data(), buffer.size(), true)) {
       SPDLOG_ERROR(
           "Not an SSL message, closing connection (client_id={})", client_id_);
-      co_return ProbingResult{
-          .is_probing = true, .sni = FPTN_DEFAULT_SNI, .should_close = true};
+      co_return ProbingResult{.is_probing = true,
+          .sni = default_proxy_domain_,
+          .should_close = true};
     }
     // Create SslLayer
     pcpp::SSLLayer* ssl_layer = pcpp::SSLLayer::createSSLMessage(
@@ -208,8 +282,9 @@ boost::asio::awaitable<Session::ProbingResult> Session::DetectProbing() {
       SPDLOG_ERROR(
           "Failed to create SSL layer from handshake data (client_id={})",
           client_id_);
-      co_return ProbingResult{
-          .is_probing = true, .sni = FPTN_DEFAULT_SNI, .should_close = true};
+      co_return ProbingResult{.is_probing = true,
+          .sni = default_proxy_domain_,
+          .should_close = true};
     }
 
     // Check handshake
@@ -217,8 +292,9 @@ boost::asio::awaitable<Session::ProbingResult> Session::DetectProbing() {
     const auto* handshake = dynamic_cast<pcpp::SSLHandshakeLayer*>(ssl_layer);
     if (!handshake) {
       SPDLOG_ERROR("Failed to cast to SSLHandshakeLayer");
-      co_return ProbingResult{
-          .is_probing = true, .sni = FPTN_DEFAULT_SNI, .should_close = true};
+      co_return ProbingResult{.is_probing = true,
+          .sni = default_proxy_domain_,
+          .should_close = true};
     }
 
     // Get TTL-HELLO
@@ -230,12 +306,13 @@ boost::asio::awaitable<Session::ProbingResult> Session::DetectProbing() {
           "Failed to extract SSLClientHelloMessage from handshake "
           "(client_id={})",
           client_id_);
-      co_return ProbingResult{
-          .is_probing = true, .sni = FPTN_DEFAULT_SNI, .should_close = true};
+      co_return ProbingResult{.is_probing = true,
+          .sni = default_proxy_domain_,
+          .should_close = true};
     }
 
     // Set  SNI
-    std::string sni = FPTN_DEFAULT_SNI;
+    std::string sni = default_proxy_domain_;
     auto* sni_ext =
         // cppcheck-suppress nullPointerRedundantCheck
         hello->getExtensionOfType<pcpp::SSLServerNameIndicationExtension>();
@@ -245,16 +322,37 @@ boost::asio::awaitable<Session::ProbingResult> Session::DetectProbing() {
         sni = std::move(tls_sni);
       }
     }
+    // Validate allowed sni
+    if (!allowed_sni_list_.empty()) {
+      const bool sni_allowed = std::ranges::any_of(
+          allowed_sni_list_, [&sni](const std::string& allowed_sni) {
+            if (sni == allowed_sni) {
+              return true;
+            }
+            // check subdomains
+            if (sni.size() > allowed_sni.size() + 1) {
+              return sni.ends_with("." + allowed_sni);
+            }
+            return false;
+          });
+      if (!sni_allowed) {
+        sni = default_proxy_domain_;
+        SPDLOG_WARN(
+            "SNI '{}' not in allowed list, using default domain: {} "
+            "(client_id={})",
+            sni, default_proxy_domain_, client_id_);
+      }
+    }
 
     // Detect and prevent recursive proxying to the local server
-    if (sni != FPTN_DEFAULT_SNI) {
+    if (sni != default_proxy_domain_) {
       const bool is_recursive_attempt = co_await IsSniSelfProxyAttempt(sni);
       if (is_recursive_attempt) {
         SPDLOG_WARN(
             "Detected recursive proxy attempt! "
             "Client: {}, SNI: {}, Redirecting to default SNI: {}",
-            client_id_, sni, FPTN_DEFAULT_SNI);
-        sni = FPTN_DEFAULT_SNI;
+            client_id_, sni, default_proxy_domain_);
+        sni = default_proxy_domain_;
       }
     }
 
@@ -273,7 +371,12 @@ boost::asio::awaitable<Session::ProbingResult> Session::DetectProbing() {
     std::memcpy(session_id, hello->getSessionID(), session_len);
 
     // Check Session ID
-    if (!fptn::protocol::tls::IsFptnClientSessionID(session_id, session_len)) {
+    const bool is_fptn_session_id =
+        protocol::https::utils::IsFptnClientSessionID(session_id, session_len);
+    const bool is_decoy_session_id =
+        protocol::https::utils::IsDecoyHandshakeSessionID(
+            session_id, session_len);
+    if (!is_fptn_session_id && !is_decoy_session_id) {
       SPDLOG_ERROR(
           "Session ID does not match FPTN client format (client_id={})",
           client_id_);
@@ -293,72 +396,205 @@ boost::asio::awaitable<Session::ProbingResult> Session::DetectProbing() {
     SPDLOG_ERROR("Unknown exception during probing (client_id={})", client_id_);
   }
   co_return ProbingResult{
-      .is_probing = true, .sni = FPTN_DEFAULT_SNI, .should_close = true};
+      .is_probing = true, .sni = default_proxy_domain_, .should_close = true};
 }
 
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 boost::asio::awaitable<bool> Session::IsSniSelfProxyAttempt(
     const std::string& sni) const {
   // First check if SNI is already an IP address
-  boost::system::error_code ec;
-  boost::asio::ip::make_address(sni, ec);
-  if (!ec) {
-    // SNI is a valid IP address - check directly
-    const auto server_ips = GetServerIpAddresses();
-    // NOLINTNEXTLINE(modernize-use-ranges)
-    const auto exists = std::find(server_ips.begin(), server_ips.end(), sni);
-    co_return exists != server_ips.end();
+  if (fptn::common::network::IsIpAddress(sni)) {
+    // FIXME
+    SPDLOG_WARN("SNI is IP address, treating as potential self-proxy: {}", sni);
+    co_return true;
   }
 
-  // Not an IP address - proceed with DNS resolution
-  boost::asio::ip::tcp::resolver resolver(
-      co_await boost::asio::this_coro::executor);
+  // Not an IP address - proceed with DNS resolution using our new function
   try {
-    const auto server_ips = GetServerIpAddresses();
+    const auto server_ips = GetServerIpAddresses(server_external_ips_);
 
-    const auto endpoints =
-        co_await resolver.async_resolve(sni, "", boost::asio::use_awaitable);
-    for (const auto& endpoint : endpoints) {
+    boost::asio::io_context ioc;
+    const auto resolve_result =
+        fptn::common::network::ResolveWithTimeout(ioc, sni, "", 5);
+
+    if (!resolve_result.success()) {
+      SPDLOG_WARN("DNS resolution failed for {}: {}", sni,
+          resolve_result.error.message());
+      co_return true;  // Treat DNS failure as potential self-proxy attempt
+    }
+
+    // Iterate through resolved endpoints
+    for (const auto& endpoint : resolve_result.results) {
       const auto ip = endpoint.endpoint().address().to_string();
-      // NOLINTNEXTLINE(modernize-use-ranges)
-      const auto exists = std::find(server_ips.begin(), server_ips.end(), ip);
-      if (exists != server_ips.end()) {
+      if (ip.empty()) {
+        continue;
+      }
+      // check server interfaces
+      if (std::ranges::find(server_ips, ip) != server_ips.end()) {
+        SPDLOG_WARN(
+            "SNI {} resolves to server interface IP {}, blocking self-proxy",
+            sni, ip);
         co_return true;
       }
     }
-  } catch (const boost::system::system_error& e) {
-    SPDLOG_WARN("DNS resolution failed for {}: {}", sni, e.what());
+  } catch (const std::exception& e) {
+    SPDLOG_WARN("Exception during DNS resolution for {}: {}", sni, e.what());
     co_return true;
-  } catch (...) {
-    SPDLOG_WARN("Unknown error during DNS resolution for {}", sni);
+  }
+
+  co_return false;
+}
+
+boost::asio::awaitable<Session::RealityResult> Session::IsRealityHandshake() {
+  try {
+    auto& tcp_socket = boost::beast::get_lowest_layer(ws_).socket();
+
+    // Peek data without consuming it
+    std::array<std::uint8_t, 16384> buffer{};
+    const std::size_t bytes_read =
+        co_await tcp_socket.async_receive(boost::asio::buffer(buffer),
+            boost::asio::socket_base::message_peek, boost::asio::use_awaitable);
+
+    if (!bytes_read) {
+      co_return RealityResult{
+          .is_reality_mode = false, .sni = "", .should_close = true};
+    }
+
+    // Check if it's SSL/TLS handshake
+    if (!pcpp::SSLLayer::IsSSLMessage(
+            0, 0, buffer.data(), buffer.size(), true)) {
+      co_return RealityResult{
+          .is_reality_mode = false, .sni = "", .should_close = true};
+    }
+
+    // Parse SSL handshake
+    pcpp::SSLLayer* ssl_layer = pcpp::SSLLayer::createSSLMessage(
+        buffer.data(), buffer.size(), nullptr, nullptr);
+    if (!ssl_layer) {
+      co_return RealityResult{
+          .is_reality_mode = false, .sni = "", .should_close = true};
+    }
+
+    // Check handshake
+    // https://github.com/wiresock/ndisapi/blob/master/examples/cpp/pcapplusplus/pcapplusplus.cpp#L40
+    auto* handshake = dynamic_cast<pcpp::SSLHandshakeLayer*>(ssl_layer);
+    if (!handshake) {
+      co_return RealityResult{
+          .is_reality_mode = false, .sni = "", .should_close = true};
+    }
+
+    auto* hello =
+        // cppcheck-suppress nullPointerRedundantCheck
+        handshake->getHandshakeMessageOfType<pcpp::SSLClientHelloMessage>();
+    if (!hello) {
+      co_return RealityResult{
+          .is_reality_mode = false, .sni = "", .should_close = true};
+    }
+
+    // Get SNI
+    std::string sni = default_proxy_domain_;
+    auto* sni_ext =
+        // cppcheck-suppress nullPointerRedundantCheck
+        hello->getExtensionOfType<pcpp::SSLServerNameIndicationExtension>();
+    if (sni_ext) {
+      std::string tls_sni = sni_ext->getHostName();
+      if (!tls_sni.empty()) {
+        sni = std::move(tls_sni);
+      }
+    }
+
+    // Check if this is a reality mode handshake by examining session ID
+    constexpr std::size_t kSessionLen = 32;
+    std::size_t session_len = std::min(
+        static_cast<std::uint8_t>(kSessionLen), hello->getSessionIDLength());
+
+    if (session_len == kSessionLen) {
+      std::uint8_t session_id[kSessionLen] = {0};
+      std::memcpy(session_id, hello->getSessionID(), session_len);
+
+      // Check if it's a decoy handshake (reality mode)
+      if (protocol::https::utils::IsDecoyHandshakeSessionID(
+              session_id, session_len)) {
+        co_return RealityResult{
+            .is_reality_mode = true, .sni = sni, .should_close = false};
+      }
+      co_return RealityResult{
+          .is_reality_mode = false, .sni = sni, .should_close = false};
+    }
+  } catch (const std::exception& e) {
+    SPDLOG_ERROR("IsRealityHandshake exception (client_id={}): {}", client_id_,
+        e.what());
+  }
+  co_return RealityResult{
+      .is_reality_mode = true, .sni = "", .should_close = true};
+}
+
+boost::asio::awaitable<bool> Session::HandleRealityMode(
+    const std::string& sni) {
+  try {
+    auto& tcp_socket = boost::beast::get_lowest_layer(ws_).socket();
+
+    std::vector<std::uint8_t> buffer(16384, '\0');
+    // std::string buffer(16384, '\0');
+    const std::size_t bytes_read = co_await tcp_socket.async_receive(
+        boost::asio::buffer(buffer), boost::asio::use_awaitable);
+    if (!bytes_read || !handshake_cache_manager_) {
+      co_return false;
+    }
+    buffer.resize(bytes_read);
+
+    const auto handshake_answer =
+        co_await handshake_cache_manager_->GetHandshake(
+            sni, buffer.data(), bytes_read, std::chrono::seconds(3));
+
+    if (!handshake_answer) {
+      co_return false;
+    }
+
+    const std::size_t bytes_wrote =
+        co_await boost::asio::async_write(tcp_socket,
+            boost::asio::buffer(*handshake_answer), boost::asio::use_awaitable);
+
+    SPDLOG_INFO(
+        "Reality mode completed, ready for real handshake (client_id={}) "
+        "request_size = {} response_size: {}",
+        client_id_, bytes_read, bytes_wrote);
     co_return true;
+  } catch (const std::exception& e) {
+    SPDLOG_ERROR(
+        "HandleRealityMode exception (client_id={}): {}", client_id_, e.what());
   }
   co_return false;
 }
 
 boost::asio::awaitable<bool> Session::HandleProxy(
     const std::string& sni, int port) {
-  auto& socket = ws_.next_layer().next_layer();
+  auto& tcp_socket = boost::beast::get_lowest_layer(ws_).socket();
   boost::asio::ip::tcp::socket target_socket(
       co_await boost::asio::this_coro::executor);
 
-  // SET TTL
-  boost::beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(20));
-  boost::beast::get_lowest_layer(socket).expires_after(
-      std::chrono::seconds(20));
+  constexpr int kTimeout = 10;
+  boost::beast::get_lowest_layer(ws_).expires_after(
+      std::chrono::seconds(kTimeout));
 
   bool status = false;
   try {
-    boost::asio::ip::tcp::resolver resolver(
-        co_await boost::asio::this_coro::executor);
     const std::string port_str = std::to_string(port);
 
-    auto endpoints = co_await resolver.async_resolve(
-        sni, port_str, boost::asio::use_awaitable);
-    co_await boost::asio::async_connect(
-        target_socket, endpoints, boost::asio::use_awaitable);
+    boost::asio::io_context ioc;
+    auto resolve_result =
+        fptn::common::network::ResolveWithTimeout(ioc, sni, port_str, kTimeout);
 
-    auto ep = target_socket.local_endpoint();
+    if (!resolve_result.success()) {
+      SPDLOG_ERROR("Proxy DNS resolution failed for {}:{}: {}", sni, port_str,
+          resolve_result.error.message());
+      co_return false;
+    }
+
+    co_await boost::asio::async_connect(
+        target_socket, resolve_result.results, boost::asio::use_awaitable);
+
+    const auto ep = target_socket.remote_endpoint();
     SPDLOG_INFO("Proxying {}:{} <-> {}:{} (client_id={})",
         ep.address().to_string(), ep.port(), sni, port_str, client_id_);
 
@@ -367,7 +603,7 @@ boost::asio::awaitable<bool> Session::HandleProxy(
                        auto& from, auto& to) -> boost::asio::awaitable<void> {
       try {
         boost::system::error_code ec;
-        std::array<char, 8192> buf{};
+        std::array<std::uint8_t, 16384> buf{};
         while (self->running_) {
           const auto n = co_await from.async_read_some(boost::asio::buffer(buf),
               boost::asio::redirect_error(boost::asio::use_awaitable, ec));
@@ -389,13 +625,16 @@ boost::asio::awaitable<bool> Session::HandleProxy(
       co_return;
     };
 
-    // Launch both forwarding directions in parallel
+    // Set socket timeout
+    SetSocketTimeouts(tcp_socket, kTimeout);
+    SetSocketTimeouts(target_socket, kTimeout);
+
     auto [client_to_server_result, server_to_client_result, completion_status] =
         co_await boost::asio::experimental::make_parallel_group(
             boost::asio::co_spawn(co_await boost::asio::this_coro::executor,
-                forward(socket, target_socket), boost::asio::deferred),
+                forward(tcp_socket, target_socket), boost::asio::deferred),
             boost::asio::co_spawn(co_await boost::asio::this_coro::executor,
-                forward(target_socket, socket), boost::asio::deferred))
+                forward(target_socket, tcp_socket), boost::asio::deferred))
             .async_wait(boost::asio::experimental::wait_for_all(),
                 boost::asio::use_awaitable);
     (void)client_to_server_result;
@@ -411,7 +650,7 @@ boost::asio::awaitable<bool> Session::HandleProxy(
 
   // close socket
   try {
-    socket.close();
+    tcp_socket.close();
   } catch (const boost::system::system_error& e) {
     SPDLOG_ERROR(
         "Failed to close the socket after proxy completion (client_id={}): "
@@ -431,95 +670,62 @@ boost::asio::awaitable<bool> Session::HandleProxy(
 boost::asio::awaitable<void> Session::RunReader() {
   boost::system::error_code ec;
   boost::beast::flat_buffer buffer;
-
   auto token = boost::asio::redirect_error(boost::asio::use_awaitable, ec);
   try {
-    while (running_) {
-      // read
+    while (running_ && ws_.is_open()) {
       co_await ws_.async_read(buffer, token);
       if (ec) {
         break;
       }
-      // parse
-      if (buffer.size() != 0) {
+      if (buffer.size() > 0 && running_ && ws_.is_open()) {
         std::string raw_data = boost::beast::buffers_to_string(buffer.data());
         std::string raw_ip =
             fptn::protocol::protobuf::GetProtoPayload(std::move(raw_data));
-        if (!raw_ip.empty()) {
+        if (!raw_ip.empty() && running_ && ws_.is_open()) {
           auto packet = fptn::common::network::IPPacket::Parse(
               std::move(raw_ip), client_id_);
           if (packet != nullptr && ws_new_ippacket_callback_) {
             ws_new_ippacket_callback_(std::move(packet));
           }
         }
-        buffer.consume(buffer.size());  // flush
       }
+      buffer.consume(buffer.size());
     }
-  } catch (const fptn::protocol::protobuf::ProcessingError& err) {
-    SPDLOG_ERROR(
-        "RunReader: failed to process protobuf payload (client_id={}): {}",
-        client_id_, err.what());
-  } catch (const fptn::protocol::protobuf::MessageError& err) {
-    SPDLOG_ERROR(
-        "RunReader: received invalid protobuf message (client_id={}): {}",
-        client_id_, err.what());
-  } catch (const fptn::protocol::protobuf::UnsupportedProtocolVersion& err) {
-    SPDLOG_ERROR("RunReader: unsupported protocol version (client_id={}): {}",
-        client_id_, err.what());
-  } catch (const boost::system::system_error& err) {
-    SPDLOG_ERROR("RunReader: Boost system error (client_id={}): {} [code={}]",
-        client_id_, err.what(), err.code().value());
   } catch (const std::exception& e) {
-    SPDLOG_ERROR("RunReader: unexpected exception (client_id={}): {}",
-        client_id_, e.what());
-  } catch (...) {
-    SPDLOG_ERROR("RunReader: unknown fatal error (client_id={})", client_id_);
+    SPDLOG_ERROR(
+        "RunReader exception (client_id={}): {}", client_id_, e.what());
   }
+
   Close();
   co_return;
 }
 
 boost::asio::awaitable<void> Session::RunSender() {
-  boost::system::error_code ec;
-
-  auto token = boost::asio::bind_cancellation_slot(cancel_signal_.slot(),
-      boost::asio::redirect_error(boost::asio::use_awaitable, ec));
-
-  std::string msg;
-  msg.reserve(4096);
-
   try {
     while (running_ && ws_.is_open()) {
-      // read
-      auto packet = co_await write_channel_.async_receive(token);
-      if (!running_ || !write_channel_.is_open() || ec) {
-        break;
-      }
-      if (packet != nullptr) {
-        // send
-        msg = fptn::protocol::protobuf::CreateProtoPayload(std::move(packet));
+      auto [ec, packet] = co_await write_channel_.async_receive(
+          boost::asio::bind_cancellation_slot(cancel_signal_.slot(),
+              boost::asio::as_tuple(boost::asio::use_awaitable)));
+      if (running_ && ws_.is_open() && !ec && packet != nullptr) {
+        std::string msg =
+            fptn::protocol::protobuf::CreateProtoPayload(std::move(packet));
         if (!msg.empty()) {
           co_await ws_.async_write(
-              boost::asio::buffer(msg.data(), msg.size()), token);
-          if (ec) {
-            SPDLOG_ERROR(
-                "RunSender: failed to send packet (client_id={}): {} [code={}]",
-                client_id_, ec.message(), ec.value());
-            break;
-          }
-          msg.clear();
+              boost::asio::buffer(msg), boost::asio::use_awaitable);
         }
       }
     }
   } catch (const boost::system::system_error& err) {
-    SPDLOG_ERROR("RunSender: Boost system error (client_id={}): {} [code={}]",
-        client_id_, err.what(), err.code().value());
+    if (err.code() != boost::asio::error::operation_aborted &&
+        err.code() != boost::beast::websocket::error::closed) {
+      SPDLOG_ERROR(
+          "RunSender error (client_id={}): {}", client_id_, err.what());
+    }
   } catch (const std::exception& e) {
-    SPDLOG_ERROR("RunSender: unhandled exception (client_id={}): {}",
-        client_id_, e.what());
-  } catch (...) {
-    SPDLOG_ERROR("RunSender: unknown fatal error (client_id={})", client_id_);
+    SPDLOG_ERROR(
+        "RunSender exception (client_id={}): {}", client_id_, e.what());
   }
+
   Close();
   co_return;
 }
@@ -535,7 +741,6 @@ boost::asio::awaitable<bool> Session::ProcessRequest() {
     co_await boost::beast::http::async_read(ws_.next_layer(), buffer, request,
         boost::asio::redirect_error(boost::asio::use_awaitable, ec));
 
-    // FIXME check ec
     if (boost::beast::websocket::is_upgrade(request)) {
       status = co_await HandleWebSocket(request);
       if (status) {
@@ -558,7 +763,6 @@ boost::asio::awaitable<bool> Session::HandleHttp(
   const std::string url = request.target();
   const std::string method = request.method_string();
 
-  // control TTL socket
   boost::beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(30));
 
   if (method.empty() && url.empty()) {
@@ -579,7 +783,6 @@ boost::asio::awaitable<bool> Session::HandleHttp(
   const auto server_info = fmt::format("fptn/{}", FPTN_VERSION);
   const auto http_date = fptn::time::TimeProvider::Instance()->Rfc7231Date();
 
-  // set content types
   boost::beast::http::response<boost::beast::http::string_body> resp;
   resp.set(boost::beast::http::field::server, server_info);
   resp.set(boost::beast::http::field::content_type,
@@ -595,7 +798,6 @@ boost::asio::awaitable<bool> Session::HandleHttp(
     int status = handler(request, resp);
     resp.result(status);
   } else {
-    // Return 404 if no handler found
     resp.result(boost::beast::http::status::not_found);
     resp.body() = "404 Not Found";
   }
@@ -620,32 +822,34 @@ boost::asio::awaitable<bool> Session::HandleHttp(
 boost::asio::awaitable<bool> Session::HandleWebSocket(
     const boost::beast::http::request<boost::beast::http::string_body>&
         request) {
-  // Set a long expiration timeout (7 days) to avoid disconnects
-  boost::beast::get_lowest_layer(ws_).expires_after(std::chrono::hours(24 * 7));
+  boost::beast::get_lowest_layer(ws_).expires_after(std::chrono::hours(12));
 
-  if (request.find("Authorization") != request.end() &&
-      request.find("ClientIP") != request.end()) {
+  if (request.contains("Authorization") && request.contains("ClientIP")) {
     std::string token = request["Authorization"];
-    boost::replace_first(token, "Bearer ", "");  // clean token string
+    boost::replace_first(token, "Bearer ", "");
 
     const std::string client_vpn_ipv4_str = request["ClientIP"];
-    const std::string client_ip_str = ws_.next_layer()
-                                          .next_layer()
+
+    boost::system::error_code ec;
+    const std::string client_ip_str = boost::beast::get_lowest_layer(ws_)
                                           .socket()
-                                          .remote_endpoint()
+                                          .remote_endpoint(ec)
                                           .address()
                                           .to_string();
-    // Create IPv4Address objects
+    if (ec) {
+      SPDLOG_ERROR("Failed to get remote endpoint: {}", ec.message());
+      co_return false;
+    }
+
     try {
-      const pcpp::IPv4Address client_ip(client_ip_str);
-      const pcpp::IPv4Address client_vpn_ipv4(client_vpn_ipv4_str);
+      const common::network::IPv4Address client_ip(client_ip_str);
+      const common::network::IPv4Address client_vpn_ipv4(client_vpn_ipv4_str);
 
       const std::string client_vpn_ipv6_str =
-          (request.find("ClientIPv6") != request.end()
-                  ? request["ClientIPv6"]
-                  : FPTN_CLIENT_DEFAULT_ADDRESS_IP6);  // default value
-      const pcpp::IPv6Address client_vpn_ipv6(client_vpn_ipv6_str);
-      // run
+          (request.contains("ClientIPv6") ? request["ClientIPv6"]
+                                          : FPTN_CLIENT_DEFAULT_ADDRESS_IP6);
+      const common::network::IPv6Address client_vpn_ipv6(client_vpn_ipv6_str);
+
       const bool status =
           ws_open_callback_(client_id_, client_ip, client_vpn_ipv4,
               client_vpn_ipv6, shared_from_this(), request.target(), token);
@@ -678,119 +882,150 @@ void Session::Close() {
     return;
   }
 
+  SPDLOG_INFO("Close session {}", client_id_);
   running_ = false;
-  boost::system::error_code ec;
 
-  // Cancel ongoing operations
   try {
     cancel_signal_.emit(boost::asio::cancellation_type::all);
     write_channel_.close();
   } catch (const std::exception& err) {
-    SPDLOG_ERROR(
+    SPDLOG_WARN(
         "Failed to cancel session or close write_channel: {}", err.what());
   } catch (...) {
-    SPDLOG_ERROR(
-        "Session::shutdown unknown fatal error (client_id={})", client_id_);
+    SPDLOG_WARN(
+        "Session::Close unknown fatal error (client_id={})", client_id_);
+  }
+
+  // Set socket linger option for fast close
+  /*
+  try {
+    auto& tcp_socket = boost::beast::get_lowest_layer(ws_).socket();
+    if (tcp_socket.is_open()) {
+      tcp_socket.set_option(boost::asio::socket_base::linger(true, 0));
+    }
+  } catch (const std::exception& err) {
+    SPDLOG_WARN(
+        "Session::Close exception setting linger option (client_id={}): {}",
+        client_id_, err.what());
+  } catch (...) {
+    SPDLOG_WARN(
+        "Session::Close unknown error setting linger option (client_id={})",
+        client_id_);
+  }
+  */
+
+  // Close TCP socket first
+  try {
+    auto& tcp_layer = boost::beast::get_lowest_layer(ws_);
+    if (tcp_layer.socket().is_open()) {
+      boost::system::error_code ec;
+      tcp_layer.expires_after(std::chrono::milliseconds(50));
+
+      tcp_layer.socket().shutdown(
+          boost::asio::ip::tcp::socket::shutdown_both, ec);
+      tcp_layer.socket().close(ec);
+    }
+  } catch (const std::exception& err) {
+    SPDLOG_WARN("Session::Close TCP socket error (client_id={}): {}",
+        client_id_, err.what());
+  } catch (...) {
+    SPDLOG_WARN(
+        "Session::Close TCP socket unknown error (client_id={})", client_id_);
   }
 
   // Close WebSocket
-  if (ws_.is_open()) {
-    try {
-      boost::beast::get_lowest_layer(ws_).expires_after(
-          std::chrono::microseconds(1));
-    } catch (const std::exception& err) {
-      SPDLOG_ERROR(
-          "Session::Close (client_id={}): Failed to set socket timeout using "
-          "expires_after: {}",
-          client_id_, err.what());
-    } catch (...) {
-      SPDLOG_ERROR(
-          "Session::Close (client_id={}): Unknown error occurred while setting "
-          "socket timeout with expires_after",
-          client_id_);
-    }
-  }
-
   try {
     if (ws_.is_open()) {
-      ws_.async_close(boost::beast::websocket::close_code::normal,
-          [](const boost::system::error_code&) {});
+      boost::system::error_code ec;
+      ws_.close(boost::beast::websocket::close_code::normal, ec);
     }
   } catch (const std::exception& err) {
-    SPDLOG_ERROR(
-        "Session::Close (client_id={}): Exception during async_close: {}",
-        client_id_, err.what());
+    SPDLOG_WARN("Session::Close WebSocket error (client_id={}): {}", client_id_,
+        err.what());
   } catch (...) {
-    SPDLOG_ERROR(
-        "Session::Close (client_id={}): Unknown error during async_close",
-        client_id_);
+    SPDLOG_WARN(
+        "Session::Close WebSocket unknown error (client_id={})", client_id_);
   }
 
   // Close SSL
-  auto& ssl = ws_.next_layer();
-  if (ssl.native_handle()) {
-    try {
-      // More robust SSL shutdown
-      ::SSL_set_quiet_shutdown(ssl.native_handle(), 1);
-      ::SSL_shutdown(ssl.native_handle());
-      ssl.shutdown(ec);
-      ssl.lowest_layer().close(ec);
-    } catch (const std::exception& err) {
-      SPDLOG_ERROR(
-          "Session::Close (client_id={}): Exception during SSL_shutdown: {}",
-          client_id_, err.what());
-    } catch (...) {
-      SPDLOG_ERROR(
-          "Session::Close (client_id={}): Unknown error during SSL_shutdown",
-          client_id_);
+  try {
+    auto& ssl_layer = ws_.next_layer();
+    if (ssl_layer.native_handle()) {
+      ::SSL_set_quiet_shutdown(ssl_layer.native_handle(), 1);
     }
+  } catch (const std::exception& err) {
+    SPDLOG_ERROR("Session::Close SSL shutdown exception (client_id={}): {}",
+        client_id_, err.what());
+  } catch (...) {
+    SPDLOG_ERROR(
+        "Session::Close SSL shutdown unknown error (client_id={})", client_id_);
   }
 
-  // Close TCP
-  auto& tcp = ssl.next_layer();
-  if (tcp.socket().is_open()) {
-    tcp.socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
-    tcp.socket().close(ec);
-  }
-
-  // Call close callback
   if (ws_close_callback_ && ws_session_was_opened_) {
     try {
       ws_close_callback_(client_id_);
     } catch (const std::exception& e) {
-      SPDLOG_ERROR(
-          "WebSocket close callback threw exception (client_id={}): {}",
+      SPDLOG_WARN("WebSocket close callback threw exception (client_id={}): {}",
           client_id_, e.what());
     } catch (...) {
-      SPDLOG_ERROR(
+      SPDLOG_WARN(
           "WebSocket close callback threw unknown exception (client_id={})",
           client_id_);
     }
   }
 }
 
-boost::asio::awaitable<bool> Session::Send(
-    fptn::common::network::IPPacketPtr packet) {
-  try {
-    if (running_ && write_channel_.is_open()) {
-      const bool status = write_channel_.try_send(
-          boost::system::error_code(), std::move(packet));
-      if (!status && !full_queue_) {
-        // Log a warning only once when the queue first becomes full
-        full_queue_ = true;
-        SPDLOG_WARN("Session::send queue is full (client_id={})", client_id_);
+boost::asio::awaitable<bool> Session::Send(common::network::IPPacketPtr pkt) {
+  auto self = shared_from_this();
+  boost::asio::post(strand_, [self, pkt = std::move(pkt)]() mutable {
+    if (self->running_ && self->write_channel_.is_open()) {
+      const bool status = self->write_channel_.try_send(
+          boost::system::error_code(), std::move(pkt));
+      if (!status && !self->full_queue_) {
+        self->full_queue_ = true;
+        SPDLOG_WARN(
+            "Session::send queue is full (client_id={})", self->client_id_);
       }
     }
-    co_return true;
-  } catch (const boost::system::system_error& err) {
+  });
+  co_return true;
+}
+
+boost::asio::awaitable<IObfuscator> Session::DetectObfuscator() {
+  try {
+    auto& tcp_socket = boost::beast::get_lowest_layer(ws_).socket();
+
+    // Peek data without consuming it from the socket buffer
+    // This allows inspection without affecting subsequent reads
+    std::array<std::uint8_t, 16384> buffer{};
+    const std::size_t bytes_read =
+        co_await tcp_socket.async_receive(boost::asio::buffer(buffer),
+            boost::asio::socket_base::message_peek, boost::asio::use_awaitable);
+
+    if (!bytes_read) {
+      SPDLOG_WARN("No data received for obfuscator detection [client_id: {}]",
+          client_id_);
+      co_return std::nullopt;
+    }
+
+    // Detect the appropriate obfuscator based on the peeked data
+    auto obfuscator = fptn::protocol::https::obfuscator::DetectObfuscator(
+        buffer.data(), bytes_read);
+    co_return obfuscator;
+  } catch (const boost::system::system_error& e) {
     SPDLOG_ERROR(
-        "Session::Send failed (client_id={}): {}", client_id_, err.what());
-  } catch (const std::exception& ex) {
-    SPDLOG_ERROR("Session::Send unexpected exception (client_id={}): {}",
-        client_id_, ex.what());
+        "System error during obfuscator setup [client_id: {}, error: '{}', "
+        "code: {}]",
+        client_id_, e.what(), e.code().message());
+  } catch (const std::exception& e) {
+    SPDLOG_ERROR(
+        "Exception during obfuscator setup [client_id: {}, error: '{}']",
+        client_id_, e.what());
   } catch (...) {
     SPDLOG_ERROR(
-        "Session::Send unknown fatal error (client_id={})", client_id_);
+        "Unknown error during obfuscator setup [client_id: {}]", client_id_);
   }
-  co_return false;
+  co_return std::nullopt;
 }
+
+};  // namespace fptn::web

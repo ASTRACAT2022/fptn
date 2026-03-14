@@ -28,7 +28,6 @@
             <translation>Отключить</translation>
         </message>
 
-
         <message>
             <source>Upload speed</source>
             <translation>Скорость выгрузки</translation>
@@ -38,7 +37,6 @@
             <translation>Скорость зарузки</translation>
         </message>
         
-
         <message>
             <source>Unable to find the default gateway IP address. Please check your connection and make sure no other VPN is active. If the error persists, specify the gateway address in the FPTN settings using your router's IP address, and ensure that an active internet interface (adapter) is selected. If the issue remains unresolved, please contact the developer via Telegram @fptn_chat.</source>
             <translation>Не удалось найти IP-адрес по умолчанию для шлюза. Пожалуйста, проверьте ваше соединение и убедитесь, что у вас не активен другой VPN. Если ошибка сохраняется, укажите адрес шлюза в настройках FPTN, используя IP-адрес вашего маршрутизатора, и убедитесь, что выбран активный интернет-интерфейс (адаптер). Если проблема не устранена, обратитесь к разработчику через Telegram @fptn_chat.</translation>
@@ -208,29 +206,36 @@
         </message>
 
         <message>
-            <source>Fake SNI to bypass censorship (hides the VPN)</source>
-            <translation>Фейковый SNI для обхода блокировок (скрывает VPN)</translation>
+            <source>Fake domain to bypass blocking</source>
+            <translation>Фейковый домен для обхода блокировок</translation>
+        </message>
+
+        <message>
+            <source>Fake domain to bypass blocking (MUST ACTUALLY EXIST!)</source>
+            <translation>Фейковый домен для обхода блокировок (ДОЛЖЕН РЕАЛЬНО СУЩЕСТОВАТЬ!)</translation>
         </message>
 
         <message>
             <source>FPTN_DESCRIPTION</source>
-            <translation>FPTN — это некоммерческий VPN, волонтерский проект для обхода цензуры. FPTN работает через протокол HTTPS, эффективно маскируя трафик и позволяя обходить ограничения цензуры. Исходный код проекта доступен на Github.</translation>
+            <translation>FPTN — это полностью разработанная с нуля технология VPN, включая собственный протокол, сервер и кроссплатформенные клиенты. Это некоммерческий проект с открытым исходным кодом, развиваемый волонтерами и предназначенный для обхода цензуры. Исходный код проекта доступен на Github.</translation>
         </message>
 
         <message>
             <source>FPTN_WEBSITE_DESCRIPTION</source>
             <translation>
             <![CDATA[
-                Наш сайт <a href="https://fptn.org">fptn.org</a></translation>
+                Наш сайт <a href="https://storage.googleapis.com/fptn.org/index.html">fptn.org</a>
             ]]>
             </translation>
         </message>
 
-        <message>
+         <message>
             <source>FPTN_TELEGRAM_DESCRIPTION</source>
             <translation>
-            <![CDATA[
-                Наша группа в Telegram <a href="https://t.me/fptn_project">@fptn_project</a>
+            <![CDATA[Присоединяйтесь к нашим Telegram-сообществам:
+                <br/> - <a href="https://t.me/fptn_project">Русскоязычное сообщество</a>
+                <br/> - <a href="https://t.me/fpnt_project_global">Англоязычное сообщество</a>
+                <br/> - <a href="https://t.me/fptn_project_iran">Персидское сообщество</a>
             ]]>
             </translation>
         </message>
@@ -260,7 +265,6 @@
             <translation>FPTN Ошибка подключения</translation>
         </message>
 
-
         <message>
             <source>VPN Conflict Detected</source>
             <translation>Обнаружен конфликт VPN</translation>
@@ -271,6 +275,195 @@
 This may cause network connectivity issues or prevent proper operation of FPTN.</source>
             <translation>Обнаружено конфликтующее VPN-соединение: %1
 Это может вызвать проблемы с подключением к сети или нарушить работу FPTN.</translation>
+        </message>
+
+        <message>
+            <source>Bypass blocking method</source>
+            <translation>Метод обхода блокировок</translation>
+        </message>
+        <message>
+            <source>SNI</source>
+            <translation>Подмена домена (SNI)</translation>
+        </message>
+        <message>
+            <source>SNI-REALITY</source>
+            <translation>Продвинутая подмена домена (SNI + REALITY)</translation>
+        </message>
+        <message>
+            <source>OBFUSCATION</source>
+            <translation>Маскировка трафика (обфускация)</translation>
+        </message>
+
+        <message>
+            <source>Support the project on</source>
+            <translation>Поддержать проект можно на</translation>
+        </message>
+        <message>
+            <source>Project Sponsors</source>
+            <translation>Спонсоры проекта</translation>
+        </message>
+
+        <message>
+            <source>Autoscan SNI</source>
+            <translation>Автосканирование SNI</translation>
+        </message>
+        <message>
+            <source>All</source>
+            <translation>Все</translation>
+        </message>
+        <message>
+            <source>Start</source>
+            <translation>Начать</translation>
+        </message>
+        <message>
+            <source>Scan completed</source>
+            <translation>Сканирование завершено</translation>
+        </message>
+        <message>
+            <source>Working SNI found: %1</source>
+            <translation>Рабочий SNI найден: %1</translation>
+        </message>
+        <message>
+            <source>No working SNI found.</source>
+            <translation>Рабочий SNI не найден.</translation>
+        </message>
+        <message>
+            <source>Error</source>
+            <translation>Ошибка</translation>
+        </message>
+        <message>
+            <source>No SNI available for scanning.</source>
+            <translation>Нет доступных SNI для сканирования.</translation>
+        </message>
+        <message>
+            <source>No servers available for scanning.</source>
+            <translation>Нет доступных серверов для сканирования.</translation>
+        </message>
+        <message>
+            <source>TLS Handshake: %1</source>
+            <translation>TLS Handshake: %1</translation>
+        </message>
+        <message>
+            <source>HTTP Request: %1</source>
+            <translation>HTTP Запрос: %1</translation>
+        </message>
+        <message>
+            <source>Import SNI file</source>
+            <translation>Импорт SNI файла</translation>
+        </message>
+        <message>
+            <source>Select SNI file</source>
+            <translation>Выберите SNI файл</translation>
+        </message>
+        <message>
+            <source>SNI files (*.sni);;All files (*)</source>
+            <translation>SNI файлы (*.sni);;Все файлы (*)</translation>
+        </message>
+        <message>
+            <source>File exists</source>
+            <translation>Файл существует</translation>
+        </message>
+        <message>
+            <source>File "%1" already exists. Overwrite?</source>
+            <translation>Файл "%1" уже существует. Перезаписать?</translation>
+        </message>
+        <message>
+            <source>Success</source>
+            <translation>Успех</translation>
+        </message>
+        <message>
+            <source>SNI file imported successfully</source>
+            <translation>SNI файл успешно импортирован</translation>
+        </message>
+        <message>
+            <source>Failed to import SNI file</source>
+            <translation>Не удалось импортировать SNI файл</translation>
+        </message>
+        <message>
+            <source>Delete this file</source>
+            <translation>Удалить этот файл</translation>
+        </message>
+        <message>
+            <source>No SNI files imported</source>
+            <translation>Нет импортированных SNI файлов</translation>
+        </message>
+
+        <message>
+            <source>Routing</source>
+            <translation>Маршрутизация</translation>
+        </message>
+        <message>
+            <source>Blacklist domains</source>
+            <translation>Черный список доменов</translation>
+        </message>
+        <message>
+            <source>Completely block access to the main domain AND all its subdomains. Format: domain:example.com (one per line)</source>
+            <translation>Полностью блокировать доступ к основному домену и всем его поддоменам. Формат: domain:example.com (по одному в строке)</translation>
+        </message>
+        <message>
+            <source>Exclude tunnel networks</source>
+            <translation>Исключить сети из туннеля</translation>
+        </message>
+        <message>
+            <source>Networks that always bypass VPN tunnel. Traffic to these networks goes directly, never through VPN</source>
+            <translation>Сети, которые всегда обходят VPN-туннель. Трафик к этим сетям идет напрямую, никогда через VPN</translation>
+        </message>
+        <message>
+            <source>Include tunnel networks</source>
+            <translation>Включить сети в туннель</translation>
+        </message>
+        <message>
+            <source>Networks that always use VPN tunnel. Traffic to these networks always goes through VPN</source>
+            <translation>Сети, которые всегда используют VPN-туннель. Трафик к этим сетям всегда идет через VPN</translation>
+        </message>
+        <message>
+            <source>Enable split tunnel</source>
+            <translation>Раздельное туннелирование (экспериментально)</translation>
+        </message>
+        <message>
+            <source>When enabled, you can configure which sites use VPN and which go directly.</source>
+            <translation>Когда включено, вы можете настроить, какие сайты используют VPN, а какие идут напрямую.</translation>
+        </message>
+        <message>
+            <source>Split tunnel mode</source>
+            <translation>Режим раздельного туннеля</translation>
+        </message>
+        <message>
+            <source>Defines traffic routing strategy for split tunneling.</source>
+            <translation>Определяет стратегию маршрутизации трафика для раздельного туннелирования.</translation>
+        </message>
+        <message>
+            <source>Exclude</source>
+            <translation>Исключить</translation>
+        </message>
+        <message>
+            <source>Include</source>
+            <translation>Включить</translation>
+        </message>
+        <message>
+            <source>Domains to route through VPN</source>
+            <translation>Домены для маршрутизации через VPN</translation>
+        </message>
+            <message>
+            <source>Domains to bypass VPN</source>
+        <translation>Домены для обхода VPN</translation>
+        </message>
+        <message>
+            <source>List domains that should use VPN tunnel. Only these domains will go through VPN, all other traffic bypasses VPN</source>
+            <translation>Список доменов, которые должны использовать VPN-туннель. Только эти домены будут проходить через VPN, весь остальной трафик мимо VPN</translation>
+        </message>
+        <message>
+            <source>List domains that should bypass VPN tunnel. These domains will go directly, all other traffic uses VPN</source>
+            <translation>Список доменов, которые не пойдут через VPN-туннель. Эти домены будут идти напрямую, весь остальной трафик пойдет в VPN</translation>
+        </message>
+
+        <message>
+            <source>Enable advanced DNS management</source>
+            <translation>Разрешить расширенное управление DNS (экспериментально)</translation>
+        </message>
+        <message>
+            <source>Enables advanced DNS configuration to prevent leaks. Recommended when using split tunneling. Use with caution!</source>
+            <translation>Включает расширенную конфигурацию DNS для защиты от утечек. Рекомендуется активировать при использовании раздельного туннелирования. Используйте с осторожностью!</translation>
         </message>
     </context>
 </TS>

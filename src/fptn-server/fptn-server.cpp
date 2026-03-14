@@ -10,9 +10,11 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <utility>
 
 #include <boost/asio.hpp>
+#include <fmt/ranges.h>  // NOLINT(build/include_order)
 
 #include "common/jwt_token/token_manager.h"
 #include "common/logger/logger.h"
+#include "common/network/ip_address.h"
 
 #include "config/command_line_config.h"
 #include "filter/filters/antiscan/antiscan.h"
@@ -50,8 +52,7 @@ int main(int argc, char* argv[]) {
       return EXIT_FAILURE;
     }
     if (!std::filesystem::exists(config.ServerCrt()) ||
-        !std::filesystem::exists(config.ServerKey()) ||
-        !std::filesystem::exists(config.ServerPub())) {
+        !std::filesystem::exists(config.ServerKey())) {
       SPDLOG_ERROR("SSL certificate or key file does not exist!");
       return EXIT_FAILURE;
     }
@@ -66,7 +67,7 @@ int main(int argc, char* argv[]) {
     }
 
     /* Init iptables */
-    auto iptables = std::make_unique<fptn::routing::IPTables>(
+    auto iptables = std::make_unique<fptn::routing::RouteManager>(
         config.OutNetworkInterface(), config.TunInterfaceName());
     /* Init virtual network interface */
 
@@ -86,7 +87,7 @@ int main(int argc, char* argv[]) {
     /* Init web server */
     auto token_manager =
         std::make_shared<fptn::common::jwt_token::TokenManager>(
-            config.ServerCrt(), config.ServerKey(), config.ServerPub());
+            config.ServerCrt(), config.ServerKey());
     /* Init user manager */
     auto user_manager = std::make_shared<fptn::user::UserManager>(
         config.UserFile(), config.UseRemoteServerAuth(),
@@ -105,8 +106,14 @@ int main(int argc, char* argv[]) {
     auto web_server = std::make_unique<fptn::web::Server>(config.ServerPort(),
         nat_table, user_manager, token_manager, prometheus,
         config.PrometheusAccessKey(), config.TunInterfaceIPv4(),
-        config.TunInterfaceIPv6(), config.EnableDetectProbing(),
-        config.MaxActiveSessionsPerUser());
+        config.TunInterfaceIPv6(),
+        /* probing */
+        config.EnableDetectProbing(), config.DefaultProxyDomain(),
+        config.AllowedSniList(),
+        /* sessions */
+        config.MaxActiveSessionsPerUser(),
+        /* External IPs */
+        config.ServerExternalIPs());
 
     /* init packet filter */
     auto filter_manager = std::make_shared<fptn::filter::Manager>();
@@ -130,11 +137,19 @@ int main(int argc, char* argv[]) {
         "VPN NETWORK IPv6:  {}\n"
         "VPN SERVER PORT:   {}\n"
         "DETECT_PROBING:    {}\n"
+        "DEFAULT_PROXY_DOMAIN: {}\n"
+        "ALLOWED_SNI_LIST:     {}\n"
         "MAX_ACTIVE_SESSIONS_PER_USER: {}\n",
-        FPTN_VERSION, config.OutNetworkInterface(),
-        config.TunInterfaceNetworkIPv4Address().toString(),
-        config.TunInterfaceNetworkIPv6Address().toString(), config.ServerPort(),
+        FPTN_VERSION,
+        // Network settings
+        config.OutNetworkInterface(),
+        config.TunInterfaceNetworkIPv4Address().ToString(),
+        config.TunInterfaceNetworkIPv6Address().ToString(), config.ServerPort(),
+        // Probing settings
         config.EnableDetectProbing() ? "YES" : "NO",
+        config.DefaultProxyDomain(),
+        fmt::format("[{}]", fmt::join(config.AllowedSniList(), ", ")),
+        // max session
         config.MaxActiveSessionsPerUser());
 
     // Init vpn manager
@@ -146,6 +161,7 @@ int main(int argc, char* argv[]) {
     manager.Start();
     WaitForSignal();
     manager.Stop();
+
     return EXIT_SUCCESS;
   } catch (const std::exception& ex) {
     SPDLOG_ERROR("An error occurred: {}. Exiting...", ex.what());

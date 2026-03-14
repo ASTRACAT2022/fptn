@@ -22,7 +22,7 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <QWidgetAction>    // NOLINT(build/include_order)
 
 #include "common/data/channel.h"
-#include "common/network/ip_packet.h"
+#include "common/network/ip_address.h"
 #include "common/network/net_interface.h"
 
 #include "config/config_file.h"
@@ -30,8 +30,9 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include "gui/settingswidget/settings.h"
 #include "gui/speedwidget/speedwidget.h"
 #include "gui/tray/tray.h"
-#include "http/client.h"
-#include "routing/iptables.h"
+#include "routing/route_manager.h"
+#include "utils/speed_estimator/server_info.h"
+#include "vpn/http/client.h"
 #include "vpn/vpn_client.h"
 
 namespace fptn::gui {
@@ -55,11 +56,13 @@ class TrayApp : public QWidget {
   void disconnecting();
   void vpnStarted(bool success, const QString& err_msg);
 
+  // cppcheck-suppress unknownMacro
  protected slots:
   void onConnectToServer();
   void onDisconnectFromServer();
   void onShowSettings();
 
+  // cppcheck-suppress unknownMacro
  protected slots:
   void handleDefaultState();
   void handleConnecting();
@@ -76,11 +79,13 @@ class TrayApp : public QWidget {
   bool startVpn(QString& err_msg);
   bool stopVpn();
 
+  void CheckForUpdatesAsync();
+
  private:
   mutable std::mutex mutex_;
 
   bool smart_connect_ = false;
-  fptn::protocol::server::ServerInfo selected_server_;
+  fptn::utils::speed_estimator::ServerInfo selected_server_;
 
   SettingsModelPtr settings_;
 
@@ -110,9 +115,8 @@ class TrayApp : public QWidget {
   QString inactive_icon_path_;
 
   fptn::vpn::VpnClientPtr vpn_client_;
-  fptn::routing::IPTablesPtr ip_tables_;
+  fptn::routing::RouteManagerSPtr route_manager_;
 
-  std::future<std::pair<bool, std::string>> update_version_future_;
   // connecting
   std::atomic<bool> connecting_in_progress_{false};
   // std::future<bool> connecting_;

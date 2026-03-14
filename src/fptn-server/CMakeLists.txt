@@ -12,9 +12,12 @@ else()
   set(CMAKE_INCLUDE_CURRENT_DIR ON)
   set(CMAKE_CXX_STANDARD 20)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcoroutines")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-command-line-argumen")
+  endif()
 endif()
-find_package(Boost REQUIRED COMPONENTS asio coroutines future process)
+
+find_package(Boost REQUIRED COMPONENTS asio coroutines future process locale)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(argparse REQUIRED)
@@ -24,6 +27,7 @@ find_package(PcapPlusPlus REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(jwt-cpp REQUIRED)
 find_package(prometheus-cpp REQUIRED)
+
 
 # Include Boost directory
 include_directories(${Boost_INCLUDE_DIRS})
@@ -47,6 +51,8 @@ add_executable(
   web/session/session.cpp
   web/server.h
   web/server.cpp
+  web/handshake/handshake_cache_manager.h
+  web/handshake/handshake_cache_manager.cpp
   filter/manager.h
   filter/manager.cpp
   filter/filters/base_filter.h
@@ -70,6 +76,7 @@ target_link_libraries(
           Boost::random
           Boost::filesystem
           Boost::process
+          Boost::locale
           OpenSSL::SSL
           OpenSSL::Crypto
           argparse::argparse

@@ -11,6 +11,7 @@ Distributed under the MIT License (https://opensource.org/licenses/MIT)
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <spdlog/spdlog.h>  // NOLINT(build/include_order)
 
@@ -24,10 +25,13 @@ Server::Server(std::uint16_t port,
     const fptn::common::jwt_token::TokenManagerSPtr& token_manager,
     const fptn::statistic::MetricsSPtr& prometheus,
     const std::string& prometheus_access_key,
-    const pcpp::IPv4Address& dns_server_ipv4,
-    const pcpp::IPv6Address& dns_server_ipv6,
+    fptn::common::network::IPv4Address dns_server_ipv4,
+    fptn::common::network::IPv6Address dns_server_ipv6,
     bool enable_detect_probing,
+    std::string default_proxy_domain,
+    std::vector<std::string> allowed_sni_list,
     std::size_t max_active_sessions_per_user,
+    std::string server_external_ips,
     int thread_number)
     : running_(false),
       port_(port),
@@ -36,10 +40,13 @@ Server::Server(std::uint16_t port,
       token_manager_(token_manager),
       prometheus_(prometheus),
       prometheus_access_key_(prometheus_access_key),
-      dns_server_ipv4_(dns_server_ipv4),
-      dns_server_ipv6_(dns_server_ipv6),
+      dns_server_ipv4_(std::move(dns_server_ipv4)),
+      dns_server_ipv6_(std::move(dns_server_ipv6)),
       enable_detect_probing_(enable_detect_probing),
+      default_proxy_domain_(std::move(default_proxy_domain)),
+      allowed_sni_list_(std::move(allowed_sni_list)),
       max_active_sessions_per_user_(max_active_sessions_per_user),
+      server_external_ips_(std::move(server_external_ips)),
       thread_number_(std::max<std::size_t>(1, thread_number)),
       ioc_(thread_number),
       from_client_(std::make_unique<fptn::common::data::Channel>()),
@@ -52,8 +59,13 @@ Server::Server(std::uint16_t port,
   using std::placeholders::_6;
   using std::placeholders::_7;
 
-  listener_ = std::make_shared<Listener>(port_, enable_detect_probing_, ioc_,
-      token_manager,
+  handshake_cache_manager_ = std::make_shared<HandshakeCacheManager>(ioc_);
+
+  listener_ = std::make_shared<Listener>(port_,
+      // proxy settings
+      enable_detect_probing_, default_proxy_domain_, allowed_sni_list_,
+      // ioc
+      ioc_, token_manager, handshake_cache_manager_, server_external_ips_,
       // NOLINTNEXTLINE(modernize-avoid-bind)
       std::bind(
           &Server::HandleWsOpenConnection, this, _1, _2, _3, _4, _5, _6, _7),
@@ -109,15 +121,15 @@ bool Server::Start() {
 }
 
 boost::asio::awaitable<void> Server::RunSender() {
-  const std::chrono::milliseconds timeout{1};
+  constexpr std::chrono::milliseconds kTimeout{10};
 
   while (running_) {
-    auto optpacket = co_await to_client_->WaitForPacketAsync(timeout);
+    auto optpacket = co_await to_client_->WaitForPacketAsync(kTimeout);
     if (optpacket && running_) {
       SessionSPtr session;
 
-      {  // mutex
-        const std::unique_lock<std::mutex> lock(mutex_);
+      {
+        const std::unique_lock<std::mutex> lock(mutex_);  // mutex
 
         auto it = sessions_.find(optpacket->get()->ClientId());
         if (it != sessions_.end()) {
@@ -139,6 +151,8 @@ bool Server::Stop() {
   if (running_) {
     running_ = false;
     SPDLOG_INFO("Server stop");
+
+    listener_->Stop();
 
     for (auto& session : sessions_) {
       if (session.second) {
@@ -173,7 +187,7 @@ int Server::HandleApiDns(const http::request& req, http::response& resp) {
   (void)req;
 
   resp.body() = fmt::format(R"({{"dns": "{}", "dns_ipv6": "{}" }})",
-      dns_server_ipv4_.toString(), dns_server_ipv6_.toString());
+      dns_server_ipv4_.ToString(), dns_server_ipv6_.ToString());
   resp.set(boost::beast::http::field::content_type,
       "application/json; charset=utf-8");
   return 200;
@@ -236,18 +250,21 @@ int Server::HandleApiTestFile(const http::request& req, http::response& resp) {
 }
 
 bool Server::HandleWsOpenConnection(fptn::ClientID client_id,
-    const pcpp::IPv4Address& client_ip,
-    const pcpp::IPv4Address& client_vpn_ipv4,
-    const pcpp::IPv6Address& client_vpn_ipv6,
+    const fptn::common::network::IPv4Address& client_ip,
+    const fptn::common::network::IPv4Address& client_vpn_ipv4,
+    const fptn::common::network::IPv6Address& client_vpn_ipv6,
     const SessionSPtr& session,
     const std::string& url,
     const std::string& access_token) {
+  if (!running_) {
+    SPDLOG_ERROR("Server is not running");
+    return false;
+  }
   if (url != kUrlWebSocket_) {
     SPDLOG_ERROR("Wrong URL \"{}\"", url);
     return false;
   }
-  if (client_vpn_ipv4 != pcpp::IPv4Address() &&
-      client_vpn_ipv6 != pcpp::IPv6Address()) {
+  if (!client_vpn_ipv4.IsEmpty() && !client_vpn_ipv6.IsEmpty()) {
     std::string username;
     std::size_t bandwidth_bites_seconds = 0;
     if (token_manager_->Validate(
@@ -279,9 +296,9 @@ bool Server::HandleWsOpenConnection(fptn::ClientID client_id,
         SPDLOG_INFO(
             "NEW SESSION! Username={} client_id={} Bandwidth={} ClientIP={} "
             "VirtualIPv4={} VirtualIPv6={}",
-            username, client_id, bandwidth_bites_seconds, client_ip.toString(),
-            nat_session->FakeClientIPv4().toString(),
-            nat_session->FakeClientIPv6().toString());
+            username, client_id, bandwidth_bites_seconds, client_ip.ToString(),
+            nat_session->FakeClientIPv4().ToString(),
+            nat_session->FakeClientIPv6().ToString());
         if (running_) {
           sessions_.insert({client_id, session});
           return true;

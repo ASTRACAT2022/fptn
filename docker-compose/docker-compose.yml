@@ -1,0 +1,52 @@
+services:
+  fptn-server:
+    restart: unless-stopped
+    image: fptnvpn/fptn-vpn-server:latest
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+      - NET_RAW
+      - SYS_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv4.conf.all.rp_filter=0
+      - net.ipv4.conf.default.rp_filter=0
+    ulimits:
+      nproc:
+        soft: 524288
+        hard: 524288
+      nofile:
+        soft: 524288
+        hard: 524288
+      memlock:
+        soft: 524288
+        hard: 524288
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "${FPTN_PORT}:443/tcp"
+    volumes:
+      - ./fptn-server-data:/etc/fptn
+    environment:
+      - ENABLE_DETECT_PROBING=${ENABLE_DETECT_PROBING}
+      - DEFAULT_PROXY_DOMAIN=${DEFAULT_PROXY_DOMAIN}
+      - ALLOWED_SNI_LIST=${ALLOWED_SNI_LIST}
+      - DISABLE_BITTORRENT=${DISABLE_BITTORRENT}
+      - PROMETHEUS_SECRET_ACCESS_KEY=${PROMETHEUS_SECRET_ACCESS_KEY}
+      - USE_REMOTE_SERVER_AUTH=${USE_REMOTE_SERVER_AUTH}
+      - REMOTE_SERVER_AUTH_HOST=${REMOTE_SERVER_AUTH_HOST}
+      - REMOTE_SERVER_AUTH_PORT=${REMOTE_SERVER_AUTH_PORT}
+      - MAX_ACTIVE_SESSIONS_PER_USER=${MAX_ACTIVE_SESSIONS_PER_USER}
+      - SERVER_EXTERNAL_IPS=${SERVER_EXTERNAL_IPS}
+      - USING_DNS_SERVER=${USING_DNS_SERVER:-dnsmasq}
+      - DNS_IPV4_PRIMARY=${DNS_IPV4_PRIMARY:-8.8.8.8}
+      - DNS_IPV4_SECONDARY=${DNS_IPV4_SECONDARY:-8.8.4.4}
+      - DNS_IPV6_PRIMARY=${DNS_IPV6_PRIMARY:-2001:4860:4860::8888}
+      - DNS_IPV6_SECONDARY=${DNS_IPV6_SECONDARY:-2001:4860:4860::8844}
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep dnsmasq && pgrep fptn-server"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

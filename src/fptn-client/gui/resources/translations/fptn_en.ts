@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="ru_RU">
+<TS version="2.1" language="en_US">
     <context>
         <name>QObject</name>
         <message>
@@ -28,7 +28,6 @@
             <translation>Disconnect</translation>
         </message>
 
-
         <message>
             <source>Upload speed</source>
             <translation>Upload speed</translation>
@@ -38,7 +37,6 @@
             <translation>Download speed</translation>
         </message>
         
-
         <message>
             <source>Unable to find the default gateway IP address. Please check your connection and make sure no other VPN is active. If the error persists, specify the gateway address in the FPTN settings using your router's IP address, and ensure that an active internet interface (adapter) is selected. If the issue remains unresolved, please contact the developer via Telegram @fptn_chat.</source>
             <translation>Unable to find the default gateway IP address. Please check your connection and make sure no other VPN is active. If the error persists, specify the gateway address in the FPTN settings using your router's IP address, and ensure that an active internet interface (adapter) is selected. If the issue remains unresolved, please contact the developer via Telegram @fptn_chat.</translation>
@@ -208,29 +206,35 @@
         </message>
 
         <message>
-            <source>Fake SNI to bypass censorship (hides the VPN)</source>
-            <translation>Fake SNI to bypass censorship (hides the VPN)</translation>
+            <source>Fake domain to bypass blocking</source>
+            <translation>Fake domain to bypass blocking</translation>
+        </message>
+
+        <message>
+            <source>Fake domain to bypass blocking (MUST ACTUALLY EXIST!)</source>
+            <translation>Fake domain to bypass blocking (MUST ACTUALLY EXIST!)</translation>
         </message>
 
         <message>
             <source>FPTN_DESCRIPTION</source>
-            <translation>FPTN is a non-commercial VPN, a volunteer project for bypassing censorship. FPTN operates over the HTTPS protocol, effectively masking traffic and enabling users to bypass censorship restrictions. The project's source code is available on GitHub.</translation>
+            <translation>FPTN is a fully custom-built VPN technology — developed from scratch, including the core protocol, server implementation, and cross-platform clients. It is a non-commercial, open-source project developed by volunteers and designed to bypass censorship. The project's source code is available on GitHub.</translation>
         </message>
 
         <message>
             <source>FPTN_WEBSITE_DESCRIPTION</source>
             <translation>
             <![CDATA[
-                Our website <a href="https://fptn.org">fptn.org</a></translation>
+                Our website <a href="https://storage.googleapis.com/fptn.org/index.html">https://storage.googleapis.com/fptn.org/index.html</a>
             ]]>
             </translation>
         </message>
-
         <message>
             <source>FPTN_TELEGRAM_DESCRIPTION</source>
             <translation>
-            <![CDATA[
-                Our Telegram group <a href="https://t.me/fptn_project">@fptn_project</a>
+            <![CDATA[Join our Telegram communities:
+                <br/> - <a href="https://t.me/fpnt_project_global">English Community</a>
+                <br/> - <a href="https://t.me/fptn_project">Russian Community</a>
+                <br/> - <a href="https://t.me/fptn_project_iran">Persian Community</a>
             ]]>
             </translation>
         </message>
@@ -257,9 +261,8 @@
 
         <message>
             <source>FPTN Connection Error</source>
-            <translation>FPTN Сonnection Error</translation>
+            <translation>FPTN Connection Error</translation>
         </message>
-
 
         <message>
             <source>VPN Conflict Detected</source>
@@ -269,8 +272,196 @@
         <message>
             <source>A conflicting VPN connection is currently active on your system: %1
 This may cause network connectivity issues or prevent proper operation of FPTN.</source>
-            <translation> A conflicting VPN connection is currently active on your system: %1
+            <translation>A conflicting VPN connection is currently active on your system: %1
 This may cause network connectivity issues or prevent proper operation of FPTN.</translation>
+        </message>
+
+        <message>
+            <source>Bypass blocking method</source>
+            <translation>Bypass blocking method</translation>
+        </message>
+        <message>
+            <source>SNI</source>
+            <translation>Domain spoofing (SNI)</translation>
+        </message>
+        <message>
+            <source>SNI-REALITY</source>
+            <translation>Advanced domain spoofing (SNI + REALITY) </translation>
+        </message>
+        <message>
+            <source>OBFUSCATION</source>
+            <translation>Traffic masking (obfuscation)</translation>
+        </message>
+
+        <message>
+            <source>Support the project on</source>
+            <translation>Support the project on</translation>
+        </message>
+        <message>
+            <source>Project Sponsors</source>
+            <translation>Project Sponsors</translation>
+        </message>
+
+        <message>
+            <source>Autoscan SNI</source>
+            <translation>Autoscan SNI</translation>
+        </message>
+        <message>
+            <source>All</source>
+            <translation>All</translation>
+        </message>
+        <message>
+            <source>Start</source>
+            <translation>Start</translation>
+        </message>
+        <message>
+            <source>Scan completed</source>
+            <translation>Scan completed</translation>
+        </message>
+        <message>
+            <source>Working SNI found: %1</source>
+            <translation>Working SNI found: %1</translation>
+        </message>
+        <message>
+            <source>No working SNI found.</source>
+            <translation>No working SNI found.</translation>
+        </message>
+        <message>
+            <source>Error</source>
+            <translation>Error</translation>
+        </message>
+        <message>
+            <source>No SNI available for scanning.</source>
+            <translation>No SNI available for scanning.</translation>
+        </message>
+        <message>
+            <source>No servers available for scanning.</source>
+            <translation>No servers available for scanning.</translation>
+        </message>
+        <message>
+            <source>TLS Handshake: %1</source>
+            <translation>TLS Handshake: %1</translation>
+        </message>
+        <message>
+            <source>HTTP Request: %1</source>
+            <translation>HTTP Request: %1</translation>
+        </message>
+        <message>
+            <source>Import SNI file</source>
+            <translation>Import SNI file</translation>
+        </message>
+        <message>
+            <source>Select SNI file</source>
+            <translation>Select SNI file</translation>
+        </message>
+        <message>
+            <source>SNI files (*.sni);;All files (*)</source>
+            <translation>SNI files (*.sni);;All files (*)</translation>
+        </message>
+        <message>
+            <source>File exists</source>
+            <translation>File exists</translation>
+        </message>
+        <message>
+            <source>File "%1" already exists. Overwrite?</source>
+            <translation>File "%1" already exists. Overwrite?</translation>
+        </message>
+        <message>
+            <source>Success</source>
+            <translation>Success</translation>
+        </message>
+        <message>
+            <source>SNI file imported successfully</source>
+            <translation>SNI file imported successfully</translation>
+        </message>
+        <message>
+            <source>Failed to import SNI file</source>
+            <translation>Failed to import SNI file</translation>
+        </message>
+        <message>
+            <source>Delete this file</source>
+            <translation>Delete this file</translation>
+        </message>
+        <message>
+            <source>No SNI files imported</source>
+            <translation>No SNI files imported</translation>
+        </message>
+
+        <message>
+            <source>Routing</source>
+            <translation>Routing</translation>
+        </message>
+        <message>
+            <source>Blacklist domains</source>
+            <translation>Blacklist domains</translation>
+        </message>
+        <message>
+            <source>Completely block access to the main domain AND all its subdomains. Format: domain:example.com (one per line)</source>
+            <translation>Completely block access to the main domain AND all its subdomains. Format: domain:example.com (one per line)</translation>
+        </message>
+        <message>
+            <source>Exclude tunnel networks</source>
+            <translation>Exclude tunnel networks</translation>
+        </message>
+        <message>
+            <source>Networks that always bypass VPN tunnel. Traffic to these networks goes directly, never through VPN</source>
+            <translation>Networks that always bypass VPN tunnel. Traffic to these networks goes directly, never through VPN</translation>
+        </message>
+        <message>
+            <source>Include tunnel networks</source>
+            <translation>Include tunnel networks</translation>
+        </message>
+        <message>
+            <source>Networks that always use VPN tunnel. Traffic to these networks always goes through VPN</source>
+            <translation>Networks that always use VPN tunnel. Traffic to these networks always goes through VPN</translation>
+        </message>
+        <message>
+            <source>Enable split tunnel</source>
+            <translation>Enable split tunneling (experimental)</translation>
+        </message>
+        <message>
+            <source>When enabled, you can configure which sites use VPN and which go directly.</source>
+            <translation>When enabled, you can configure which sites use VPN and which go directly.</translation>
+        </message>
+        <message>
+            <source>Split tunnel mode</source>
+            <translation>Split tunnel mode</translation>
+        </message>
+        <message>
+            <source>Defines traffic routing strategy for split tunneling.</source>
+            <translation>Defines traffic routing strategy for split tunneling.</translation>
+        </message>
+        <message>
+            <source>Exclude</source>
+            <translation>Exclude</translation>
+        </message>
+        <message>
+            <source>Include</source>
+            <translation>Include</translation>
+        </message>
+        <message>
+            <source>Domains to route through VPN</source>
+            <translation>Domains to route through VPN</translation>
+        </message>
+        <message>
+            <source>Domains to bypass VPN</source>
+            <translation>Domains to bypass VPN</translation>
+        </message>
+        <message>
+            <source>List domains that should bypass VPN tunnel. Only these domains will go through VPN, all other traffic bypasses VPN</source>
+            <translation>List domains that should bypass VPN tunnel. Only these domains will go through VPN, all other traffic bypasses VPN</translation>
+        </message>
+        <message>
+            <source>List websites that should bypass VPN tunnel. These domains will go directly, all other traffic uses VPN</source>
+            <translation>List websites that should bypass VPN tunnel. These domains will go directly, all other traffic uses VPN</translation>
+        </message>
+        <message>
+            <source>Enable advanced DNS management</source>
+            <translation>Enable advanced DNS management (experimental)</translation>
+        </message>
+        <message>
+            <source>Enables advanced DNS configuration to prevent leaks. Recommended when using split tunneling. Use with caution!</source>
+            <translation>Enables advanced DNS configuration to prevent leaks. Recommended when using split tunneling. Use with caution!</translation>
         </message>
     </context>
 </TS>

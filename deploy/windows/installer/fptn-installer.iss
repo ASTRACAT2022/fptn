@@ -5,9 +5,6 @@
 // replacement automatically
 #define APP_COPYRIGHT_YEAR "2024"
 
-// replacement automatically arm64 x64os
-#define ARCHITECTURES_ALLOWED 	"x64os" 
-
 #define APP_ID				"{D2D2C1f8-5F5F-5f79-9C5F-7E2B9F1C39A4}"
 #define APP_URL 			"fptn.org"
 #define APP_NAME 			"FPTN Client"
@@ -38,7 +35,7 @@ UninstallLogMode=overwrite
 AppCopyright=Copyright (C) {#APP_COPYRIGHT_YEAR} {#APP_PUBLISHER}.
 PrivilegesRequired=admin
 AppendDefaultDirName=yes
-ArchitecturesAllowed={#ARCHITECTURES_ALLOWED}
+ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupLogging=Yes
 
@@ -55,13 +52,15 @@ Source: "depends/fptn-client-cli.exe"; DestDir: "{app}"; Flags: ignoreversion re
 Source: "depends/vc_redist.exe"; DestDir: "{tmp}"; AfterInstall: InstallVCRedist(); Flags: ignoreversion recursesubdirs createallsubdirs
 // ------- generate bat files -------
 Source: "depends/wintun.dll"; DestDir: "{app}"; AfterInstall: GenerateBatFile('{app}\fptn-client.exe','{app}\FptnClient.bat'); Flags: ignoreversion recursesubdirs createallsubdirs uninsneveruninstall
+// ------- copy SNI files -------
+Source: "depends/sni/*"; DestDir: "{app}\SNI"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}";
-Name: "startup"; Description: {cm:AutoStartProgram,{#APP_NAME}};
+// --- Name: "startup"; Description: {cm:AutoStartProgram,{#APP_NAME}};
 
 [Run]
-Filename: "cmd.exe"; Parameters: "/c reg add ""HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"" /v IPEnableRouter /t REG_DWORD /d 1 /f"; Flags: runhidden
+// Filename: "cmd.exe"; Parameters: "/c reg add ""HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"" /v IPEnableRouter /t REG_DWORD /d 1 /f"; Flags: runhidden
 Filename: "{app}\FptnClient.bat"; Description: "{cm:LaunchProgram,{#APP_NAME}}"; Flags: nowait postinstall skipifdoesntexist
 
 [UninstallRun]
@@ -79,6 +78,7 @@ Name: "{commondesktop}\{#APP_NAME}"; Filename: "{app}\fptn-client.exe"; Tasks: d
 [InstallDelete]
 Type: filesandordirs; Name: "{app}\qt"
 Type: filesandordirs; Name: "{app}\bin"
+Type: filesandordirs; Name: "{app}\SNI"
 Type: filesandordirs; Name: "{app}\logs"
 Type: filesandordirs; Name: "{app}\plugins"
 Type: files; Name: "{app}\*"
@@ -86,6 +86,7 @@ Type: files; Name: "{app}\*"
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\qt"
 Type: filesandordirs; Name: "{app}\bin"
+Type: filesandordirs; Name: "{app}\SNI"
 Type: filesandordirs; Name: "{app}\logs"
 Type: filesandordirs; Name: "{app}\plugins"
 Type: files; Name: "{app}\*"
